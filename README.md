@@ -1,6 +1,6 @@
 # Hybrid Movie Recommendation System
 
-This project implements the plan from `Xay dung He thong Goi y Phim.pdf`: a modular hybrid movie recommender with MovieLens-style data, collaborative filtering, content-based metadata encoding, FastAPI, Streamlit, Docker, and offline evaluation.
+This project is a modular hybrid movie recommender with MovieLens-style data, collaborative filtering, content-based metadata encoding, FastAPI, Streamlit, Docker, and offline evaluation.
 
 The repository is intentionally runnable with a small bundled dataset. When network access and compute are available, replace `data/sample` with MovieLens data and install the optional deep-learning dependencies for LightGCN and SBERT.
 
