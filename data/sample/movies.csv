@@ -1,0 +1,26 @@
+movieId,title,genres,year
+1,Toy Story (1995),Adventure|Animation|Children|Comedy|Fantasy,1995
+2,Jumanji (1995),Adventure|Children|Fantasy,1995
+3,Heat (1995),Action|Crime|Thriller,1995
+4,Sabrina (1995),Comedy|Romance,1995
+5,GoldenEye (1995),Action|Adventure|Thriller,1995
+6,American President The (1995),Comedy|Drama|Romance,1995
+7,Seven (1995),Mystery|Thriller,1995
+8,Usual Suspects The (1995),Crime|Mystery|Thriller,1995
+9,Braveheart (1995),Action|Drama|War,1995
+10,Clueless (1995),Comedy|Romance,1995
+11,Apollo 13 (1995),Adventure|Drama|IMAX,1995
+12,Babe (1995),Children|Drama,1995
+13,Taxi Driver (1976),Crime|Drama|Thriller,1976
+14,Star Wars Episode IV A New Hope (1977),Action|Adventure|Sci-Fi,1977
+15,Alien (1979),Horror|Sci-Fi,1979
+16,Back to the Future (1985),Adventure|Comedy|Sci-Fi,1985
+17,The Matrix (1999),Action|Sci-Fi|Thriller,1999
+18,Fight Club (1999),Action|Crime|Drama|Thriller,1999
+19,Finding Nemo (2003),Adventure|Animation|Children|Comedy,2003
+20,The Dark Knight (2008),Action|Crime|Drama|IMAX,2008
+21,Inception (2010),Action|Crime|Drama|Mystery|Sci-Fi|Thriller,2010
+22,Interstellar (2014),Adventure|Drama|Sci-Fi|IMAX,2014
+23,La La Land (2016),Comedy|Drama|Romance,2016
+24,Parasite (2019),Comedy|Drama|Thriller,2019
+25,Everything Everywhere All at Once (2022),Action|Adventure|Comedy|Sci-Fi,2022

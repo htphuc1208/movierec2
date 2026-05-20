@@ -1,0 +1,15 @@
+.git
+.venv
+__pycache__
+*.py[cod]
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.env
+.env.*
+data/*.zip
+data/ml-latest-small
+data/ml-1m
+data/ml-20m
+data/ml-latest
+artifacts

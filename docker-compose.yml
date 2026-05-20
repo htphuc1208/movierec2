@@ -1,0 +1,38 @@
+services:
+  backend:
+    build: .
+    command: uvicorn main:app --host 0.0.0.0 --port 8000
+    environment:
+      - MOVIEREC_DATA_DIR=/app/data/sample
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+
+  frontend:
+    build: .
+    command: streamlit run app/streamlit_app.py --server.address 0.0.0.0 --server.port 8501 --server.fileWatcherType none
+    environment:
+      - API_URL=http://backend:8000
+      - MOVIEREC_DATA_DIR=/app/data/sample
+    ports:
+      - "8501:8501"
+    depends_on:
+      - backend
+    volumes:
+      - .:/app
+
+  postgres:
+    image: postgres:16-alpine
+    profiles: ["storage"]
+    environment:
+      - POSTGRES_DB=movierec
+      - POSTGRES_USER=movierec
+      - POSTGRES_PASSWORD=movierec
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
