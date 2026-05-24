@@ -77,6 +77,24 @@ python3 scripts/train_baseline.py --data-dir data/sample --top-k 10
 
 This command trains the lightweight hybrid baseline on the sample CSV files and reports Precision@K, Recall@K, NDCG@K, MRR@K, and RMSE.
 
+## Train The Funk-SVD Rating Baseline
+
+The independent SVD pipeline trains a biased matrix-factorization model from `models/SVD.py` without changing the API or the default hybrid recommender.
+
+Install PyTorch first. CPU-only install is enough for MovieLens small:
+
+```bash
+pip install torch --index-url https://download.pytorch.org/whl/cpu
+```
+
+Run the pipeline:
+
+```bash
+python3 scripts/train_svd.py --data-dir data/ml-latest-small --epochs 15 --factors 64 --artifact-path artifacts/svd_ml_latest_small.pt
+```
+
+The script reports RMSE/MAE plus Precision@K, Recall@K, NDCG@K, and MRR@K. Artifacts and metrics are written under `artifacts/`, which is ignored by Git.
+
 ## Use MovieLens Data
 
 Download MovieLens latest-small when network access is available:
@@ -126,4 +144,4 @@ postgres  Optional storage service scaffold
 
 ## Notes
 
-The production-style research modules are present in `models/LightGCN.py`, `models/TwoTower.py`, and `models/Loss.py`. They require `requirements-ml.txt`. The default demo uses a deterministic SVD + TF-IDF hybrid implementation so the project can run on a normal laptop without GPU or model downloads.
+The production-style research modules are present in `models/LightGCN.py`, `models/TwoTower.py`, and `models/Loss.py`. They require `requirements-ml.txt`. The default demo uses a numpy Funk-SVD + TF-IDF hybrid implementation so the project can run on a normal laptop without GPU or model downloads.

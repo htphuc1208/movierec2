@@ -27,6 +27,11 @@ class RecommenderSmokeTest(unittest.TestCase):
         self.assertGreaterEqual(len(movies), 20)
         self.assertIn("title", movies[0])
 
+    def test_predict_rating_range(self) -> None:
+        rating = self.model.predict_rating(user_id=104, movie_id=21)
+        self.assertGreaterEqual(rating, 0.5)
+        self.assertLessEqual(rating, 5.0)
+
 
 if __name__ == "__main__":
     unittest.main()

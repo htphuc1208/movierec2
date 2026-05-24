@@ -5,7 +5,6 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from sklearn.decomposition import TruncatedSVD
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.preprocessing import MinMaxScaler
@@ -28,7 +27,7 @@ class Recommendation:
 
 
 class HybridMovieRecommender:
-    """A lightweight SVD + TF-IDF hybrid recommender for API/UI inference."""
+    """A lightweight Funk-SVD + TF-IDF hybrid recommender for API/UI inference."""
 
     def __init__(
         self,
@@ -36,11 +35,23 @@ class HybridMovieRecommender:
         beta: float = 0.35,
         popularity_weight: float = 0.10,
         min_rating: float = 4.0,
+        collaborative_factors: int = 32,
+        collaborative_epochs: int = 12,
+        collaborative_lr: float = 0.01,
+        collaborative_reg: float = 0.02,
+        collaborative_batch_size: int = 4096,
+        random_state: int = 42,
     ) -> None:
         self.alpha = alpha
         self.beta = beta
         self.popularity_weight = popularity_weight
         self.min_rating = min_rating
+        self.collaborative_factors = collaborative_factors
+        self.collaborative_epochs = collaborative_epochs
+        self.collaborative_lr = collaborative_lr
+        self.collaborative_reg = collaborative_reg
+        self.collaborative_batch_size = collaborative_batch_size
+        self.random_state = random_state
         self.movies: pd.DataFrame | None = None
         self.ratings: pd.DataFrame | None = None
         self.tags: pd.DataFrame | None = None
@@ -51,6 +62,9 @@ class HybridMovieRecommender:
         self._rating_matrix: np.ndarray | None = None
         self._user_factors: np.ndarray | None = None
         self._item_factors: np.ndarray | None = None
+        self._user_bias: np.ndarray | None = None
+        self._item_bias: np.ndarray | None = None
+        self._global_mean: float = 0.0
         self._content_matrix: Any = None
         self._vectorizer: TfidfVectorizer | None = None
         self._popularity: np.ndarray | None = None
@@ -157,12 +171,8 @@ class HybridMovieRecommender:
         self._ensure_fit()
         if movie_id not in self.movie_index:
             return 3.0
-        idx = self.movie_index[movie_id]
-        cf = self._collaborative_scores(user_id)[idx]
-        content = self._content_scores(user_id, [])[idx]
-        popularity = self._popularity_scores()[idx]
-        raw = 0.65 * self._rating_like(cf) + 0.25 * self._rating_like(content) + 0.10 * self._rating_like(popularity)
-        return float(np.clip(raw, 0.5, 5.0))
+        rating = self._collaborative_rating(user_id, movie_id)
+        return float(np.clip(rating, 0.5, 5.0))
 
     def users(self) -> list[int]:
         return list(self.user_ids)
@@ -177,22 +187,70 @@ class HybridMovieRecommender:
     def _build_collaborative_space(self) -> None:
         user_count = len(self.user_ids)
         item_count = len(self.movie_ids)
-        matrix = np.zeros((user_count, item_count), dtype=np.float32)
+        factor_count = max(1, min(self.collaborative_factors, max(user_count, 1), max(item_count, 1)))
+        rng = np.random.default_rng(self.random_state)
+        self._global_mean = float(self.ratings["rating"].mean()) if not self.ratings.empty else 3.0
+        self._user_factors = rng.normal(0.0, 0.05, size=(user_count, factor_count)).astype(np.float32)
+        self._item_factors = rng.normal(0.0, 0.05, size=(item_count, factor_count)).astype(np.float32)
+        self._user_bias = np.zeros(user_count, dtype=np.float32)
+        self._item_bias = np.zeros(item_count, dtype=np.float32)
+
+        if user_count == 0 or item_count == 0 or self.ratings.empty:
+            self._rating_matrix = np.zeros((user_count, item_count), dtype=np.float32)
+            return
+
+        interactions = []
         for row in self.ratings.itertuples():
             user_idx = self.user_index.get(int(row.userId))
             item_idx = self.movie_index.get(int(row.movieId))
             if user_idx is not None and item_idx is not None:
-                matrix[user_idx, item_idx] = float(row.rating)
-        self._rating_matrix = matrix
+                interactions.append((user_idx, item_idx, float(row.rating)))
+        if not interactions:
+            self._rating_matrix = np.zeros((user_count, item_count), dtype=np.float32)
+            return
 
-        if user_count >= 2 and item_count >= 2 and np.count_nonzero(matrix) > 0:
-            n_components = max(1, min(16, user_count - 1, item_count - 1))
-            svd = TruncatedSVD(n_components=n_components, random_state=42)
-            self._user_factors = svd.fit_transform(matrix)
-            self._item_factors = svd.components_.T
-        else:
-            self._user_factors = np.zeros((user_count, 1), dtype=np.float32)
-            self._item_factors = np.zeros((item_count, 1), dtype=np.float32)
+        data = np.asarray(interactions, dtype=np.float32)
+        user_indices = data[:, 0].astype(np.int64)
+        item_indices = data[:, 1].astype(np.int64)
+        ratings = data[:, 2].astype(np.float32)
+        self._rating_matrix = np.zeros((user_count, item_count), dtype=np.float32)
+        self._rating_matrix[user_indices, item_indices] = ratings
+
+        for _ in range(max(0, self.collaborative_epochs)):
+            order = rng.permutation(len(ratings))
+            for start in range(0, len(order), self.collaborative_batch_size):
+                batch = order[start : start + self.collaborative_batch_size]
+                users = user_indices[batch]
+                items = item_indices[batch]
+                labels = ratings[batch]
+
+                user_vecs = self._user_factors[users].copy()
+                item_vecs = self._item_factors[items].copy()
+                user_bias = self._user_bias[users]
+                item_bias = self._item_bias[items]
+                preds = self._global_mean + user_bias + item_bias + np.sum(user_vecs * item_vecs, axis=1)
+                errors = preds - labels
+
+                np.add.at(
+                    self._user_factors,
+                    users,
+                    -self.collaborative_lr * (errors[:, None] * item_vecs + self.collaborative_reg * user_vecs),
+                )
+                np.add.at(
+                    self._item_factors,
+                    items,
+                    -self.collaborative_lr * (errors[:, None] * user_vecs + self.collaborative_reg * item_vecs),
+                )
+                np.add.at(
+                    self._user_bias,
+                    users,
+                    -self.collaborative_lr * (errors + self.collaborative_reg * user_bias),
+                )
+                np.add.at(
+                    self._item_bias,
+                    items,
+                    -self.collaborative_lr * (errors + self.collaborative_reg * item_bias),
+                )
 
     def _build_content_space(self) -> None:
         tag_map = self._tags_by_movie()
@@ -226,9 +284,29 @@ class HybridMovieRecommender:
         self._ensure_fit()
         if user_id is not None and user_id in self.user_index:
             user_idx = self.user_index[user_id]
-            scores = self._user_factors[user_idx] @ self._item_factors.T
+            scores = (
+                self._global_mean
+                + self._user_bias[user_idx]
+                + self._item_bias
+                + self._user_factors[user_idx] @ self._item_factors.T
+            )
             return scores.astype(np.float32)
         return self._popularity_scores()
+
+    def _collaborative_rating(self, user_id: int, movie_id: int) -> float:
+        item_idx = self.movie_index.get(movie_id)
+        if item_idx is None:
+            return 3.0
+        item_bias = float(self._item_bias[item_idx]) if self._item_bias is not None else 0.0
+        if user_id not in self.user_index:
+            return self._global_mean + item_bias
+        user_idx = self.user_index[user_id]
+        return float(
+            self._global_mean
+            + self._user_bias[user_idx]
+            + self._item_bias[item_idx]
+            + self._user_factors[user_idx] @ self._item_factors[item_idx]
+        )
 
     def _content_scores(self, user_id: int | None, session_movie_ids: list[int]) -> np.ndarray:
         self._ensure_fit()
@@ -267,7 +345,7 @@ class HybridMovieRecommender:
                 reasons.append(f"Similar genres: {', '.join(shared[:3])}")
             else:
                 reasons.append("Similar metadata profile")
-        if cf_score > 0:
+        if cf_score >= max(self._global_mean, 3.5):
             reasons.append("Liked by users with related taste")
         director = str(movie.get("director", "")).split("|")[0].strip()
         if director:
