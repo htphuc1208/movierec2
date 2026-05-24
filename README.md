@@ -95,6 +95,22 @@ python3 scripts/train_svd.py --data-dir data/ml-latest-small --epochs 15 --facto
 
 The script reports RMSE/MAE plus Precision@K, Recall@K, NDCG@K, and MRR@K. Artifacts and metrics are written under `artifacts/`, which is ignored by Git.
 
+## Train Or Test The Content Model
+
+Content-based recommendation logic lives in `models/TwoTower.py`. It supports the repository's `movieId`/`userId` schema and falls back to TF-IDF when SBERT is not installed.
+
+```python
+from data import MovieLensDataLoader
+from models import TFIDFRecommender
+
+bundle = MovieLensDataLoader("data/sample").load()
+model = TFIDFRecommender().fit(bundle.movies, bundle.tags)
+model.recommend_similar_movies(movie_id=1, top_k=5)
+model.recommend_for_user(user_id=104, user_history=bundle.ratings, top_k=5)
+```
+
+For SBERT experiments, install `requirements-ml.txt` and use `SBERTRecommender`. Generated vectors and similarity matrices should be saved under `artifacts/`.
+
 ## Use MovieLens Data
 
 Download MovieLens latest-small when network access is available:
