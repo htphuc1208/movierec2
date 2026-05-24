@@ -12,4 +12,6 @@ data/ml-latest-small
 data/ml-1m
 data/ml-20m
 data/ml-latest
+data/raw/*.dat
+data/processed/*.csv
 artifacts

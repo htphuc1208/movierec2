@@ -91,6 +91,14 @@ Then run:
 python3 scripts/train_baseline.py --data-dir data/ml-latest-small
 ```
 
+For the MovieLens 1M `.dat` format, place `movies.dat`, `ratings.dat`, and `users.dat` in `data/raw`, then run:
+
+```bash
+python3 data/run_process.py
+```
+
+Processed CSV files are written to `data/processed` and are ignored by Git.
+
 ## Optional TMDb Enrichment
 
 Create a TMDb API key and run:

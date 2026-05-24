@@ -17,12 +17,5 @@ data/ml-1m/
 data/ml-20m/
 data/ml-latest/
 data/*.zip
-data/__pycache__
-data/raw/movies.dat
-data/raw/ratings.dat
-data/raw/users.dat
-data/processed/movie_metadata.csv
-data/processed/movies_clean.csv
-data/processed/ratings_clean.csv
-data/processed/tags_clean.csv
-data/processed/users_clean.csv
+data/raw/*.dat
+data/processed/*.csv
