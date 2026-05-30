@@ -1,6 +1,6 @@
 from .recommender import HybridMovieRecommender
 from .SVD import SVDModel
-from .TwoTower import ContentRecommender, MetadataEncoder, SBERTRecommender, TFIDFRecommender
+from .TwoTower import ContentRecommender, MetadataEncoder, SBERTRecommender, TFIDFRecommender, TwoTowerModel
 
 __all__ = [
     "HybridMovieRecommender",
@@ -9,4 +9,5 @@ __all__ = [
     "MetadataEncoder",
     "SBERTRecommender",
     "TFIDFRecommender",
+    "TwoTowerModel",
 ]

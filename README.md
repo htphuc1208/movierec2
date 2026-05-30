@@ -127,7 +127,7 @@ model.recommend_similar_movies(movie_id=1, top_k=5)
 model.recommend_for_user(user_id=104, user_history=bundle.ratings, top_k=5)
 ```
 
-For SBERT experiments, install `requirements-ml.txt` and use `SBERTRecommender`. Generated vectors and similarity matrices should be saved under `artifacts/`.
+For SBERT experiments, install `requirements-ml.txt` and use `SBERTRecommender`. `TwoTowerModel` is also available as a small PyTorch projection layer for SBERT/user-profile vectors, but the default content runtime remains artifact-light TF-IDF. Generated vectors and similarity matrices should be saved under `artifacts/`.
 
 ## Use MovieLens Data
 
@@ -155,6 +155,19 @@ docker compose --profile train run --rm trainer python scripts/tune_hybrid.py --
 
 Benchmark reports are written to `artifacts/benchmarks/`. The tuned hybrid artifact is written to `artifacts/recommender/latest/` and can be loaded by setting `MOVIEREC_ARTIFACT_DIR`.
 
+Native PyTorch LightGCN training is also available:
+
+```bash
+python3 scripts/train_lightgcn.py \
+  --data-dir data/ml-latest-small \
+  --epochs 50 \
+  --artifact-path artifacts/lightgcn_ml_latest_small.pt \
+  --recommender-artifact-dir artifacts/recommender/lightgcn-ml-latest-small \
+  --dataset-name ml-latest-small
+```
+
+The exported recommender artifact stores final LightGCN embeddings in the same `manifest.json` plus `collaborative.npz` format used by the API/UI.
+
 For the MovieLens 1M `.dat` format, place `movies.dat`, `ratings.dat`, and `users.dat` in `data/raw`, then run:
 
 ```bash
@@ -173,6 +186,15 @@ python3 scripts/enrich_tmdb.py --data-dir data/ml-latest-small --limit 1000
 ```
 
 The enrichment script writes `enriched_movies.csv` with poster URL, overview, director, cast, and production metadata when the API is reachable.
+
+## Letterboxd Crawl Data
+
+The `crawl/` folder contains an experimental Letterboxd crawler and CSV outputs merged from the remote crawl branch. This data is crawler-specific and is not a drop-in MovieLens replacement yet.
+
+```bash
+python3 crawl/crawl_letterboxd_movie_centric.py --resume
+python3 crawl/enrich_tmdb.py --api-key "$TMDB_API_KEY" --data-dir crawl/data/raw
+```
 
 ## Docker
 

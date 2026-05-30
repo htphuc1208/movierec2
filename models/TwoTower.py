@@ -9,6 +9,15 @@ import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
+try:
+    import torch
+    from torch import nn
+    import torch.nn.functional as F
+except ImportError:  # pragma: no cover - optional dependency
+    torch = None
+    nn = None
+    F = None
+
 
 @dataclass
 class EncodedItems:
@@ -211,3 +220,34 @@ class SBERTRecommender(ContentRecommender):
         artifact_dir: str | Path = "artifacts",
     ) -> None:
         super().__init__(backend="sbert", model_name=model_name, artifact_dir=artifact_dir)
+
+
+if torch is not None:
+
+    class TwoTowerModel(nn.Module):
+        """Small neural two-tower projection for user/item metadata vectors."""
+
+        def __init__(self, input_dim: int = 768, hidden_dim: int = 256, output_dim: int = 128, dropout: float = 0.2) -> None:
+            super().__init__()
+            self.user_tower = self._tower(input_dim, hidden_dim, output_dim, dropout)
+            self.item_tower = self._tower(input_dim, hidden_dim, output_dim, dropout)
+
+        @staticmethod
+        def _tower(input_dim: int, hidden_dim: int, output_dim: int, dropout: float) -> nn.Sequential:
+            return nn.Sequential(
+                nn.Linear(input_dim, hidden_dim),
+                nn.ReLU(),
+                nn.Dropout(dropout),
+                nn.Linear(hidden_dim, output_dim),
+            )
+
+        def forward(self, user_features: torch.Tensor, item_features: torch.Tensor) -> torch.Tensor:
+            user_embeddings = F.normalize(self.user_tower(user_features), p=2, dim=1)
+            item_embeddings = F.normalize(self.item_tower(item_features), p=2, dim=1)
+            return torch.sum(user_embeddings * item_embeddings, dim=1)
+
+else:
+
+    class TwoTowerModel:  # pragma: no cover - optional dependency
+        def __init__(self, *args, **kwargs) -> None:
+            raise ImportError("TwoTowerModel requires torch. Install requirements-ml.txt.")

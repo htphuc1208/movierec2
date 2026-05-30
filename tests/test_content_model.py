@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 
 from data import MovieLensDataLoader
-from models import ContentRecommender, MetadataEncoder, TFIDFRecommender
+from models import ContentRecommender, MetadataEncoder, TFIDFRecommender, TwoTowerModel
 
 
 class ContentModelSmokeTest(unittest.TestCase):
@@ -28,6 +28,16 @@ class ContentModelSmokeTest(unittest.TestCase):
         history = self.bundle.ratings.rename(columns={"userId": "user_id", "movieId": "movie_id"})
         recs = model.recommend_for_user(user_id=104, user_history=history, top_k=3)
         self.assertEqual(len(recs), 3)
+
+    def test_two_tower_model_scores_pairs_when_torch_available(self) -> None:
+        try:
+            import torch
+        except ImportError as exc:
+            self.skipTest(str(exc))
+
+        model = TwoTowerModel(input_dim=8, hidden_dim=4, output_dim=3)
+        scores = model(torch.ones(2, 8), torch.ones(2, 8))
+        self.assertEqual(tuple(scores.shape), (2,))
 
 
 if __name__ == "__main__":

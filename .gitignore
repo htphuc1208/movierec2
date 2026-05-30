@@ -15,10 +15,17 @@ log_tensorboard/
 saved/
 .DS_Store
 artifacts/
-data/ml-latest-small/
+
+# Shared small datasets that teammates need are intentionally tracked:
+# - data/sample/
+# - data/ml-latest-small/
+# - crawl/data/raw/
+#
+# Keep large or generated datasets out of Git.
 data/ml-1m/
 data/ml-20m/
 data/ml-latest/
 data/*.zip
+crawl/data/*.zip
 data/raw/*.dat
 data/processed/*.csv
