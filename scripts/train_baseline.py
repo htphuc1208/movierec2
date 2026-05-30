@@ -47,18 +47,20 @@ def evaluate(data_dir: str, top_k: int, artifact_dir: str = "", dataset_name: st
     def avg(values: list[float]) -> float:
         return sum(values) / len(values) if values else 0.0
 
+    rating_rmse = rmse(y_true, y_pred)
     metrics = {
         f"precision@{top_k}": avg(precision_values),
         f"recall@{top_k}": avg(recall_values),
         f"ndcg@{top_k}": avg(ndcg_values),
         f"mrr@{top_k}": avg(mrr_values),
-        "rmse": rmse(y_true, y_pred),
+        "rating_rmse": rating_rmse,
+        "rmse": rating_rmse,
     }
     if artifact_dir:
         model.save_artifact(
             artifact_dir,
             dataset_name=dataset_name or Path(data_dir).resolve().name,
-            model_name="hybrid-funk-svd-tfidf",
+            model_name=model.model_name,
             metrics={"test": metrics},
         )
     return metrics

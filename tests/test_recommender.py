@@ -33,6 +33,11 @@ class RecommenderSmokeTest(unittest.TestCase):
         self.assertGreaterEqual(rating, 0.5)
         self.assertLessEqual(rating, 5.0)
 
+    def test_model_reports_collaborative_engine(self) -> None:
+        info = self.model.model_info()
+        self.assertIn(info["collaborative_engine"], {"torch", "numpy"})
+        self.assertEqual(info["collaborative_mode"], "funk_svd")
+
     def test_artifact_round_trip(self) -> None:
         bundle = MovieLensDataLoader("data/sample").load()
         with TemporaryDirectory() as temp_dir:

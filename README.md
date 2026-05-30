@@ -85,9 +85,9 @@ python3 scripts/train_baseline.py --data-dir data/ml-latest-small --top-k 10 --a
 MOVIEREC_DATA_DIR=data/ml-latest-small MOVIEREC_ARTIFACT_DIR=artifacts/recommender/latest uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-## Train The Funk-SVD Rating Baseline
+## Train The PyTorch SVD Rating Baseline
 
-The independent SVD pipeline trains a biased matrix-factorization model from `models/SVD.py` without changing the API or the default hybrid recommender.
+The default hybrid recommender now uses the same biased PyTorch SVD engine when Torch is installed, then stores only numpy arrays for inference. If Torch is unavailable, it falls back to the older numpy Funk-SVD implementation so the API/UI can still start.
 
 Install PyTorch first. CPU-only install is enough for MovieLens small:
 
@@ -98,10 +98,20 @@ pip install torch --index-url https://download.pytorch.org/whl/cpu
 Run the pipeline:
 
 ```bash
-python3 scripts/train_svd.py --data-dir data/ml-latest-small --epochs 15 --factors 64 --artifact-path artifacts/svd_ml_latest_small.pt
+python3 scripts/train_svd.py \
+  --data-dir data/ml-latest-small \
+  --artifact-path artifacts/svd_ml_latest_small.pt \
+  --recommender-artifact-dir artifacts/recommender/svd-ml-latest-small \
+  --dataset-name ml-latest-small
 ```
 
-The script reports RMSE/MAE plus Precision@K, Recall@K, NDCG@K, and MRR@K. Artifacts and metrics are written under `artifacts/`, which is ignored by Git.
+The script reports RMSE/MAE plus Precision@K, Recall@K, NDCG@K, and MRR@K. Defaults are tuned for `ml-latest-small` (`factors=24`, small initialization, shrinkage bias priors, explicit L2 regularization, validation early stopping). The `.pt` artifact keeps the PyTorch checkpoint for research. The `--recommender-artifact-dir` output writes a lightweight `manifest.json` plus `collaborative.npz` that the API/UI can load without importing Torch:
+
+```bash
+MOVIEREC_DATA_DIR=data/ml-latest-small \
+MOVIEREC_ARTIFACT_DIR=artifacts/recommender/svd-ml-latest-small \
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+```
 
 ## Train Or Test The Content Model
 
@@ -180,4 +190,4 @@ postgres  Optional storage service scaffold
 
 ## Notes
 
-The production-style research modules are present in `models/LightGCN.py`, `models/TwoTower.py`, and `models/Loss.py`. They require `requirements-ml.txt`. The default demo uses a numpy Funk-SVD + TF-IDF hybrid implementation so the project can run on a normal laptop without GPU or model downloads.
+The production-style research modules are present in `models/LightGCN.py`, `models/TwoTower.py`, and `models/Loss.py`. They require `requirements-ml.txt`. The default demo uses PyTorch SVD + TF-IDF when Torch is installed, and falls back to numpy Funk-SVD + TF-IDF when running in a minimal API/UI environment without Torch.
