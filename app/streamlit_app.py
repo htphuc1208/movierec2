@@ -26,7 +26,17 @@ def local_recommender() -> HybridMovieRecommender:
     data_dir = os.getenv("MOVIEREC_DATA_DIR", "data/sample")
     bundle = MovieLensDataLoader(data_dir).load()
     model = HybridMovieRecommender()
+    artifact_dir = os.getenv("MOVIEREC_ARTIFACT_DIR", "").strip()
+    if artifact_dir:
+        try:
+            model.load_artifact(artifact_dir, bundle.movies, bundle.ratings, bundle.tags)
+            if not model.dataset_name:
+                model.dataset_name = data_dir
+            return model
+        except Exception:
+            pass
     model.fit(bundle.movies, bundle.ratings, bundle.tags)
+    model.dataset_name = data_dir
     return model
 
 
@@ -62,6 +72,13 @@ def load_users() -> list[int]:
     return local_recommender().users()
 
 
+def load_model_info() -> dict[str, Any]:
+    data = api_get("/model-info")
+    if data and "model_info" in data:
+        return data["model_info"]
+    return local_recommender().model_info()
+
+
 def recommend(user_id: int | None, top_k: int, session_context: list[str], exclude_seen: bool) -> list[dict[str, Any]]:
     payload = {
         "user_id": user_id,
@@ -87,6 +104,9 @@ def render_card(movie: dict[str, Any]) -> None:
     genres = movie.get("genres", "")
     overview = movie.get("overview", "")
     reasons = movie.get("reason", [])
+    cf_score = float(movie.get("collaborative_score", 0.0))
+    content_score = float(movie.get("content_score", 0.0))
+    popularity_score = float(movie.get("popularity_score", 0.0))
 
     with st.container(border=True):
         left, right = st.columns([1, 2], vertical_alignment="top")
@@ -98,6 +118,7 @@ def render_card(movie: dict[str, Any]) -> None:
         with right:
             st.markdown(f"### {title}")
             st.caption(f"Score {score:.3f} | {genres}")
+            st.caption(f"CF {cf_score:.3f} | Content {content_score:.3f} | Popularity {popularity_score:.3f}")
             if overview:
                 st.write(overview)
             if reasons:
@@ -110,9 +131,19 @@ def main() -> None:
 
     movies = load_movies()
     users = load_users()
+    model_info = load_model_info()
     movie_frame = pd.DataFrame(movies)
 
     with st.sidebar:
+        st.caption(f"{model_info.get('model_name', 'hybrid')} | {model_info.get('model_source', 'runtime')}")
+        metrics = model_info.get("metrics", {})
+        if isinstance(metrics, dict) and metrics:
+            flat_metrics = metrics.get("test") if isinstance(metrics.get("test"), dict) else metrics
+            if isinstance(flat_metrics, dict):
+                ndcg = flat_metrics.get("ndcg@10") or flat_metrics.get("NDCG@10")
+                mrr = flat_metrics.get("mrr@10") or flat_metrics.get("MRR@10")
+                if ndcg is not None or mrr is not None:
+                    st.caption(f"NDCG@10 {float(ndcg or 0):.4f} | MRR@10 {float(mrr or 0):.4f}")
         user_options = ["Guest"] + [str(user) for user in users]
         selected_user = st.selectbox("User", user_options, index=0 if not users else 1)
         top_k = st.slider("Top K", 5, 20, 10, 1)

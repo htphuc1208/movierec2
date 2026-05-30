@@ -10,6 +10,9 @@ __pycache__/
 htmlcov/
 .mypy_cache/
 .ruff_cache/
+log/
+log_tensorboard/
+saved/
 .DS_Store
 artifacts/
 data/ml-latest-small/

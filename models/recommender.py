@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -68,6 +71,13 @@ class HybridMovieRecommender:
         self._content_matrix: Any = None
         self._vectorizer: TfidfVectorizer | None = None
         self._popularity: np.ndarray | None = None
+        self._collaborative_mode = "funk_svd"
+        self.model_source = "unfit"
+        self.model_name = "hybrid-funk-svd"
+        self.dataset_name = ""
+        self.artifact_path = ""
+        self.metrics: dict[str, Any] = {}
+        self.artifact_manifest: dict[str, Any] = {}
 
     def fit(self, movies: pd.DataFrame, ratings: pd.DataFrame, tags: pd.DataFrame | None = None) -> "HybridMovieRecommender":
         self.movies = movies.copy().reset_index(drop=True)
@@ -82,7 +92,124 @@ class HybridMovieRecommender:
         self._build_collaborative_space()
         self._build_content_space()
         self._build_popularity()
+        self._collaborative_mode = "funk_svd"
+        self.model_source = "runtime_fit"
+        self.model_name = "hybrid-funk-svd"
         return self
+
+    def load_artifact(
+        self,
+        artifact_dir: str | Path,
+        movies: pd.DataFrame,
+        ratings: pd.DataFrame,
+        tags: pd.DataFrame | None = None,
+    ) -> "HybridMovieRecommender":
+        artifact_path = Path(artifact_dir)
+        manifest_path = artifact_path / "manifest.json"
+        collaborative_path = artifact_path / "collaborative.npz"
+        if not manifest_path.exists():
+            raise FileNotFoundError(f"Missing recommender manifest: {manifest_path}")
+        if not collaborative_path.exists():
+            raise FileNotFoundError(f"Missing collaborative artifact: {collaborative_path}")
+
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        weights = manifest.get("weights", {})
+        self.alpha = float(weights.get("collaborative", self.alpha))
+        self.beta = float(weights.get("content", self.beta))
+        self.popularity_weight = float(weights.get("popularity", self.popularity_weight))
+        self.min_rating = float(manifest.get("positive_threshold", self.min_rating))
+
+        self.movies = movies.copy().reset_index(drop=True)
+        self.ratings = ratings.copy()
+        self.tags = tags.copy() if tags is not None else pd.DataFrame(columns=["movieId", "tag"])
+        self.movie_ids = self.movies["movieId"].astype(int).tolist()
+        self.movie_index = {movie_id: idx for idx, movie_id in enumerate(self.movie_ids)}
+
+        data = np.load(collaborative_path, allow_pickle=False)
+        artifact_user_ids = data["user_ids"].astype(np.int64).tolist()
+        artifact_movie_ids = data["movie_ids"].astype(np.int64).tolist()
+        user_embeddings = data["user_embeddings"].astype(np.float32)
+        item_embeddings = data["item_embeddings"].astype(np.float32)
+
+        self.user_ids = [int(user_id) for user_id in artifact_user_ids]
+        self.user_index = {user_id: idx for idx, user_id in enumerate(self.user_ids)}
+        self._user_factors = user_embeddings
+        self._item_factors = self._align_item_embeddings(artifact_movie_ids, item_embeddings)
+        self._user_bias = self._load_optional_vector(data, "user_bias", len(self.user_ids))
+        self._item_bias = self._align_optional_item_vector(data, "item_bias", artifact_movie_ids)
+        self._global_mean = float(data["global_mean"][0]) if "global_mean" in data else float(self.ratings["rating"].mean())
+        self._rating_matrix = None
+        self._collaborative_mode = str(manifest.get("collaborative", {}).get("mode", "embedding"))
+
+        self._build_content_space()
+        self._build_popularity()
+
+        self.model_source = "artifact"
+        self.model_name = str(manifest.get("model_name", "artifact-hybrid"))
+        self.dataset_name = str(manifest.get("dataset", ""))
+        self.artifact_path = str(artifact_path)
+        self.metrics = dict(manifest.get("metrics", {}))
+        self.artifact_manifest = manifest
+        return self
+
+    @classmethod
+    def from_artifact(
+        cls,
+        artifact_dir: str | Path,
+        movies: pd.DataFrame,
+        ratings: pd.DataFrame,
+        tags: pd.DataFrame | None = None,
+    ) -> "HybridMovieRecommender":
+        return cls().load_artifact(artifact_dir, movies, ratings, tags)
+
+    def save_artifact(
+        self,
+        artifact_dir: str | Path,
+        dataset_name: str,
+        model_name: str | None = None,
+        metrics: dict[str, Any] | None = None,
+        extra_manifest: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        self._ensure_fit()
+        path = Path(artifact_dir)
+        path.mkdir(parents=True, exist_ok=True)
+        collaborative_path = path / "collaborative.npz"
+
+        np.savez_compressed(
+            collaborative_path,
+            user_ids=np.asarray(self.user_ids, dtype=np.int64),
+            movie_ids=np.asarray(self.movie_ids, dtype=np.int64),
+            user_embeddings=np.asarray(self._user_factors, dtype=np.float32),
+            item_embeddings=np.asarray(self._item_factors, dtype=np.float32),
+            user_bias=np.asarray(self._user_bias, dtype=np.float32),
+            item_bias=np.asarray(self._item_bias, dtype=np.float32),
+            global_mean=np.asarray([self._global_mean], dtype=np.float32),
+        )
+
+        manifest: dict[str, Any] = {
+            "artifact_version": 1,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "dataset": dataset_name,
+            "model_name": model_name or self.model_name,
+            "model_source": self.model_source,
+            "positive_threshold": self.min_rating,
+            "weights": {
+                "collaborative": self.alpha,
+                "content": self.beta,
+                "popularity": self.popularity_weight,
+            },
+            "collaborative": {
+                "mode": self._collaborative_mode,
+                "factors": int(self._user_factors.shape[1]) if self._user_factors is not None else 0,
+            },
+            "content": {"backend": "tfidf"},
+            "files": {"collaborative": "collaborative.npz"},
+            "metrics": metrics or self.metrics,
+        }
+        if extra_manifest:
+            manifest.update(extra_manifest)
+        (path / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        return manifest
 
     def recommend(
         self,
@@ -184,6 +311,25 @@ class HybridMovieRecommender:
         records = self.movies[existing].to_dict(orient="records")
         return [{key: self._json_scalar(value) for key, value in record.items()} for record in records]
 
+    def model_info(self) -> dict[str, Any]:
+        self._ensure_fit()
+        return {
+            "model_source": self.model_source,
+            "model_name": self.model_name,
+            "dataset": self.dataset_name,
+            "artifact_path": self.artifact_path,
+            "weights": {
+                "collaborative": self.alpha,
+                "content": self.beta,
+                "popularity": self.popularity_weight,
+            },
+            "positive_threshold": self.min_rating,
+            "collaborative_mode": self._collaborative_mode,
+            "metrics": self.metrics,
+            "user_count": len(self.user_ids),
+            "movie_count": len(self.movie_ids),
+        }
+
     def _build_collaborative_space(self) -> None:
         user_count = len(self.user_ids)
         item_count = len(self.movie_ids)
@@ -284,6 +430,9 @@ class HybridMovieRecommender:
         self._ensure_fit()
         if user_id is not None and user_id in self.user_index:
             user_idx = self.user_index[user_id]
+            if self._collaborative_mode == "embedding":
+                scores = self._user_factors[user_idx] @ self._item_factors.T
+                return scores.astype(np.float32)
             scores = (
                 self._global_mean
                 + self._user_bias[user_idx]
@@ -297,6 +446,10 @@ class HybridMovieRecommender:
         item_idx = self.movie_index.get(movie_id)
         if item_idx is None:
             return 3.0
+        if self._collaborative_mode == "embedding":
+            scores = self._collaborative_scores(user_id)
+            scaled = self._scale_scores(scores)
+            return self._rating_like(float(scaled[item_idx]))
         item_bias = float(self._item_bias[item_idx]) if self._item_bias is not None else 0.0
         if user_id not in self.user_index:
             return self._global_mean + item_bias
@@ -377,6 +530,36 @@ class HybridMovieRecommender:
         grouped = self.tags.groupby("movieId")["tag"].apply(lambda values: [str(value) for value in values])
         return {int(movie_id): values for movie_id, values in grouped.items()}
 
+    def _align_item_embeddings(self, artifact_movie_ids: list[int], item_embeddings: np.ndarray) -> np.ndarray:
+        factor_count = int(item_embeddings.shape[1]) if item_embeddings.ndim == 2 else 1
+        aligned = np.zeros((len(self.movie_ids), factor_count), dtype=np.float32)
+        artifact_index = {int(movie_id): idx for idx, movie_id in enumerate(artifact_movie_ids)}
+        for movie_id, target_idx in self.movie_index.items():
+            source_idx = artifact_index.get(int(movie_id))
+            if source_idx is not None:
+                aligned[target_idx] = item_embeddings[source_idx]
+        return aligned
+
+    @staticmethod
+    def _load_optional_vector(data: Any, name: str, size: int) -> np.ndarray:
+        if name in data:
+            values = data[name].astype(np.float32)
+            if values.shape[0] == size:
+                return values
+        return np.zeros(size, dtype=np.float32)
+
+    def _align_optional_item_vector(self, data: Any, name: str, artifact_movie_ids: list[int]) -> np.ndarray:
+        if name not in data:
+            return np.zeros(len(self.movie_ids), dtype=np.float32)
+        values = data[name].astype(np.float32)
+        aligned = np.zeros(len(self.movie_ids), dtype=np.float32)
+        artifact_index = {int(movie_id): idx for idx, movie_id in enumerate(artifact_movie_ids)}
+        for movie_id, target_idx in self.movie_index.items():
+            source_idx = artifact_index.get(int(movie_id))
+            if source_idx is not None and source_idx < values.shape[0]:
+                aligned[target_idx] = values[source_idx]
+        return aligned
+
     @staticmethod
     def _scale_scores(scores: np.ndarray) -> np.ndarray:
         finite = np.isfinite(scores)
@@ -401,5 +584,5 @@ class HybridMovieRecommender:
         return value
 
     def _ensure_fit(self) -> None:
-        if self.movies is None or self.ratings is None:
+        if self.movies is None or self.ratings is None or self._popularity is None:
             raise RuntimeError("HybridMovieRecommender.fit must be called before inference.")

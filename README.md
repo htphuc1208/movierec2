@@ -47,6 +47,7 @@ Useful endpoints:
 
 ```text
 GET  /health
+GET  /model-info
 GET  /movies
 POST /recommend
 ```
@@ -76,6 +77,13 @@ python3 scripts/train_baseline.py --data-dir data/sample --top-k 10
 ```
 
 This command trains the lightweight hybrid baseline on the sample CSV files and reports Precision@K, Recall@K, NDCG@K, MRR@K, and RMSE.
+
+To export an API-loadable artifact:
+
+```bash
+python3 scripts/train_baseline.py --data-dir data/ml-latest-small --top-k 10 --artifact-dir artifacts/recommender/latest --dataset-name ml-latest-small
+MOVIEREC_DATA_DIR=data/ml-latest-small MOVIEREC_ARTIFACT_DIR=artifacts/recommender/latest uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+```
 
 ## Train The Funk-SVD Rating Baseline
 
@@ -124,6 +132,18 @@ Then run:
 ```bash
 python3 scripts/train_baseline.py --data-dir data/ml-latest-small
 ```
+
+## RecBole Benchmark And Hybrid Tuning
+
+RecBole is isolated in a Python 3.10 trainer image because some pinned RecBole dependencies do not install cleanly in newer local Python versions.
+
+```bash
+docker compose --profile train build trainer
+docker compose --profile train run --rm trainer python scripts/benchmark_recbole.py --data-dir data/ml-latest-small --models Pop,ItemKNN,BPR,LightGCN --top-k 10 20
+docker compose --profile train run --rm trainer python scripts/tune_hybrid.py --data-dir data/ml-latest-small --cf-model LightGCN --content-backend tfidf --output-dir artifacts/recommender/latest
+```
+
+Benchmark reports are written to `artifacts/benchmarks/`. The tuned hybrid artifact is written to `artifacts/recommender/latest/` and can be loaded by setting `MOVIEREC_ARTIFACT_DIR`.
 
 For the MovieLens 1M `.dat` format, place `movies.dat`, `ratings.dat`, and `users.dat` in `data/raw`, then run:
 

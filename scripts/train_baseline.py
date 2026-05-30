@@ -14,7 +14,7 @@ from evaluation import mrr_at_k, ndcg_at_k, precision_at_k, recall_at_k, rmse
 from models import HybridMovieRecommender
 
 
-def evaluate(data_dir: str, top_k: int) -> dict[str, float]:
+def evaluate(data_dir: str, top_k: int, artifact_dir: str = "", dataset_name: str = "") -> dict[str, float]:
     loader = MovieLensDataLoader(data_dir)
     bundle = loader.load()
     train, _, test = loader.train_val_test_split(bundle.ratings)
@@ -47,22 +47,32 @@ def evaluate(data_dir: str, top_k: int) -> dict[str, float]:
     def avg(values: list[float]) -> float:
         return sum(values) / len(values) if values else 0.0
 
-    return {
+    metrics = {
         f"precision@{top_k}": avg(precision_values),
         f"recall@{top_k}": avg(recall_values),
         f"ndcg@{top_k}": avg(ndcg_values),
         f"mrr@{top_k}": avg(mrr_values),
         "rmse": rmse(y_true, y_pred),
     }
+    if artifact_dir:
+        model.save_artifact(
+            artifact_dir,
+            dataset_name=dataset_name or Path(data_dir).resolve().name,
+            model_name="hybrid-funk-svd-tfidf",
+            metrics={"test": metrics},
+        )
+    return metrics
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train and evaluate the lightweight hybrid baseline.")
     parser.add_argument("--data-dir", default="data/sample")
     parser.add_argument("--top-k", type=int, default=10)
+    parser.add_argument("--artifact-dir", default="")
+    parser.add_argument("--dataset-name", default="")
     args = parser.parse_args()
 
-    metrics = evaluate(args.data_dir, args.top_k)
+    metrics = evaluate(args.data_dir, args.top_k, args.artifact_dir, args.dataset_name)
     for name, value in metrics.items():
         print(f"{name}: {value:.4f}")
 

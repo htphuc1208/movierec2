@@ -22,6 +22,10 @@ class RecommendResponse(BaseModel):
     recommendations: list[dict[str, Any]]
 
 
+class ModelInfoResponse(BaseModel):
+    model_info: dict[str, Any]
+
+
 app = FastAPI(
     title="Hybrid Movie Recommendation API",
     version="0.1.0",
@@ -34,7 +38,17 @@ def get_recommender() -> HybridMovieRecommender:
     data_dir = os.getenv("MOVIEREC_DATA_DIR", "data/sample")
     bundle = MovieLensDataLoader(data_dir).load()
     model = HybridMovieRecommender()
+    artifact_dir = os.getenv("MOVIEREC_ARTIFACT_DIR", "").strip()
+    if artifact_dir:
+        try:
+            model.load_artifact(artifact_dir, bundle.movies, bundle.ratings, bundle.tags)
+            if not model.dataset_name:
+                model.dataset_name = data_dir
+            return model
+        except Exception as exc:
+            model.artifact_manifest = {"artifact_load_error": str(exc), "artifact_path": artifact_dir}
     model.fit(bundle.movies, bundle.ratings, bundle.tags)
+    model.dataset_name = data_dir
     return model
 
 
@@ -51,6 +65,14 @@ def users() -> dict[str, list[int]]:
 @app.get("/movies")
 def movies() -> dict[str, list[dict[str, Any]]]:
     return {"movies": get_recommender().movies_for_picker()}
+
+
+@app.get("/model-info", response_model=ModelInfoResponse)
+def model_info() -> ModelInfoResponse:
+    info = get_recommender().model_info()
+    if get_recommender().artifact_manifest.get("artifact_load_error"):
+        info["artifact_load_error"] = get_recommender().artifact_manifest["artifact_load_error"]
+    return ModelInfoResponse(model_info=info)
 
 
 @app.post("/recommend", response_model=RecommendResponse)
