@@ -1,0 +1,414 @@
+{
+  "generated_at": "2026-06-02T04:26:53.766977+00:00",
+  "data_dir": "data/ml-latest-small",
+  "shapes": {
+    "movies": [
+      9742,
+      3
+    ],
+    "ratings": [
+      100836,
+      4
+    ],
+    "tags": [
+      3683,
+      4
+    ],
+    "links": [
+      9742,
+      3
+    ],
+    "enriched_movies": [
+      9742,
+      22
+    ],
+    "loaded_movies": [
+      9742,
+      27
+    ],
+    "loaded_ratings": [
+      100836,
+      4
+    ]
+  },
+  "ids": {
+    "users": 610,
+    "movies": 9742,
+    "rated_movies": 9724,
+    "sparsity_pct": 98.3032
+  },
+  "duplicates": {
+    "movies_movieId": 0,
+    "ratings_userId_movieId": 0,
+    "links_movieId": 0,
+    "enriched_movieId": 0,
+    "tags_full_rows": 0
+  },
+  "orphans": {
+    "rating_movieIds_not_in_movies": 0,
+    "tag_movieIds_not_in_movies": 0,
+    "link_movieIds_not_in_movies": 0,
+    "enriched_movieIds_not_in_movies": 0,
+    "movies_without_ratings": 18,
+    "movies_without_links": 0,
+    "movies_without_enriched": 0
+  },
+  "ratings": {
+    "min": 0.5,
+    "max": 5.0,
+    "mean": 3.5016,
+    "median": 3.5,
+    "distribution": {
+      "0.5": 1370,
+      "1.0": 2811,
+      "1.5": 1791,
+      "2.0": 7551,
+      "2.5": 5550,
+      "3.0": 20047,
+      "3.5": 13136,
+      "4.0": 26818,
+      "4.5": 8551,
+      "5.0": 13211
+    },
+    "positive_threshold": 4.0,
+    "positive_count": 48580,
+    "positive_pct": 48.1772,
+    "user_interactions_min": 20,
+    "user_interactions_median": 70.5,
+    "user_interactions_mean": 165.3049,
+    "user_interactions_max": 2698,
+    "item_interactions_min": 1,
+    "item_interactions_median": 3.0,
+    "item_interactions_mean": 10.3698,
+    "item_interactions_max": 329,
+    "items_with_lt_5_ratings": 6074,
+    "items_with_lt_10_ratings": 7455
+  },
+  "split": {
+    "train_size": 80650,
+    "val_size": 10093,
+    "test_size": 10093,
+    "train_pct": 79.9814,
+    "val_pct": 10.0093,
+    "test_pct": 10.0093,
+    "train_users": 610,
+    "val_users": 610,
+    "test_users": 610,
+    "test_users_not_in_train": 0,
+    "val_movies_not_in_train": 694,
+    "test_movies_not_in_train": 884,
+    "val_warm_interactions": 9344,
+    "val_cold_interactions": 749,
+    "test_warm_interactions": 9146,
+    "test_cold_interactions": 947,
+    "test_cold_positive_interactions": 359
+  },
+  "content_coverage": {
+    "overview": {
+      "mode": "nonempty",
+      "covered": 9620,
+      "total": 9742,
+      "coverage_pct": 98.7477
+    },
+    "tagline": {
+      "mode": "nonempty",
+      "covered": 8376,
+      "total": 9742,
+      "coverage_pct": 85.9782
+    },
+    "director": {
+      "mode": "nonempty",
+      "covered": 9617,
+      "total": 9742,
+      "coverage_pct": 98.7169
+    },
+    "cast": {
+      "mode": "nonempty",
+      "covered": 9591,
+      "total": 9742,
+      "coverage_pct": 98.45
+    },
+    "poster_url": {
+      "mode": "nonempty",
+      "covered": 9617,
+      "total": 9742,
+      "coverage_pct": 98.7169
+    },
+    "budget": {
+      "mode": ">0",
+      "covered": 6359,
+      "total": 9742,
+      "coverage_pct": 65.2741
+    },
+    "revenue": {
+      "mode": ">0",
+      "covered": 6934,
+      "total": 9742,
+      "coverage_pct": 71.1763
+    },
+    "tmdbId": {
+      "mode": "nonempty",
+      "covered": 9734,
+      "total": 9742,
+      "coverage_pct": 99.9179
+    },
+    "imdbId": {
+      "mode": "nonempty",
+      "covered": 9742,
+      "total": 9742,
+      "coverage_pct": 100.0
+    },
+    "genres": {
+      "mode": "nonempty",
+      "covered": 9742,
+      "total": 9742,
+      "coverage_pct": 100.0
+    },
+    "year": {
+      "mode": "nonempty",
+      "covered": 9730,
+      "total": 9742,
+      "coverage_pct": 99.8768
+    },
+    "release_date": {
+      "mode": "nonempty",
+      "covered": 0,
+      "total": 9742,
+      "coverage_pct": 0.0
+    },
+    "runtime": {
+      "mode": ">0",
+      "covered": 0,
+      "total": 9742,
+      "coverage_pct": 0.0
+    },
+    "original_language": {
+      "mode": "nonempty",
+      "covered": 0,
+      "total": 9742,
+      "coverage_pct": 0.0
+    },
+    "production_countries": {
+      "mode": "nonempty",
+      "covered": 0,
+      "total": 9742,
+      "coverage_pct": 0.0
+    },
+    "keywords": {
+      "mode": "nonempty",
+      "covered": 0,
+      "total": 9742,
+      "coverage_pct": 0.0
+    },
+    "tag_genome_tags": {
+      "mode": "nonempty",
+      "covered": 0,
+      "total": 9742,
+      "coverage_pct": 0.0
+    },
+    "vote_average": {
+      "mode": ">0",
+      "covered": 0,
+      "total": 9742,
+      "coverage_pct": 0.0
+    },
+    "vote_count": {
+      "mode": ">0",
+      "covered": 0,
+      "total": 9742,
+      "coverage_pct": 0.0
+    },
+    "popularity": {
+      "mode": ">0",
+      "covered": 0,
+      "total": 9742,
+      "coverage_pct": 0.0
+    },
+    "collection_name": {
+      "mode": "nonempty",
+      "covered": 0,
+      "total": 9742,
+      "coverage_pct": 0.0
+    },
+    "certification": {
+      "mode": "nonempty",
+      "covered": 0,
+      "total": 9742,
+      "coverage_pct": 0.0
+    }
+  },
+  "content_issues": {
+    "any_core_metadata_missing": 156,
+    "all_core_metadata_missing": 121,
+    "no_genres_listed": 34,
+    "missing_year": 12,
+    "tagged_movies": 1572,
+    "tagged_movies_pct": 16.1363,
+    "no_budget_no_revenue": 2285
+  },
+  "examples": {
+    "missing_enriched_movies": [],
+    "movies_without_ratings": [
+      {
+        "movieId": 1076,
+        "title": "Innocents, The (1961)",
+        "genres": "Drama|Horror|Thriller"
+      },
+      {
+        "movieId": 2939,
+        "title": "Niagara (1953)",
+        "genres": "Drama|Thriller"
+      },
+      {
+        "movieId": 3338,
+        "title": "For All Mankind (1989)",
+        "genres": "Documentary"
+      },
+      {
+        "movieId": 3456,
+        "title": "Color of Paradise, The (Rang-e khoda) (1999)",
+        "genres": "Drama"
+      },
+      {
+        "movieId": 4194,
+        "title": "I Know Where I'm Going! (1945)",
+        "genres": "Drama|Romance|War"
+      },
+      {
+        "movieId": 5721,
+        "title": "Chosen, The (1981)",
+        "genres": "Drama"
+      },
+      {
+        "movieId": 6668,
+        "title": "Road Home, The (Wo de fu qin mu qin) (1999)",
+        "genres": "Drama|Romance"
+      },
+      {
+        "movieId": 6849,
+        "title": "Scrooge (1970)",
+        "genres": "Drama|Fantasy|Musical"
+      },
+      {
+        "movieId": 7020,
+        "title": "Proof (1991)",
+        "genres": "Comedy|Drama|Romance"
+      },
+      {
+        "movieId": 7792,
+        "title": "Parallax View, The (1974)",
+        "genres": "Thriller"
+      }
+    ],
+    "missing_year": [
+      {
+        "movieId": 40697,
+        "title": "Babylon 5",
+        "genres": "Sci-Fi"
+      },
+      {
+        "movieId": 140956,
+        "title": "Ready Player One",
+        "genres": "Action|Sci-Fi|Thriller"
+      },
+      {
+        "movieId": 143410,
+        "title": "Hyena Road",
+        "genres": "(no genres listed)"
+      },
+      {
+        "movieId": 147250,
+        "title": "The Adventures of Sherlock Holmes and Doctor Watson",
+        "genres": "(no genres listed)"
+      },
+      {
+        "movieId": 149334,
+        "title": "Nocturnal Animals",
+        "genres": "Drama|Thriller"
+      },
+      {
+        "movieId": 156605,
+        "title": "Paterson",
+        "genres": "(no genres listed)"
+      },
+      {
+        "movieId": 162414,
+        "title": "Moonlight",
+        "genres": "Drama"
+      },
+      {
+        "movieId": 167570,
+        "title": "The OA",
+        "genres": "(no genres listed)"
+      },
+      {
+        "movieId": 171495,
+        "title": "Cosmos",
+        "genres": "(no genres listed)"
+      },
+      {
+        "movieId": 171631,
+        "title": "Maria Bamford: Old Baby",
+        "genres": "(no genres listed)"
+      }
+    ],
+    "no_genres_listed": [
+      {
+        "movieId": 114335,
+        "title": "La cravate (1957)",
+        "genres": "(no genres listed)"
+      },
+      {
+        "movieId": 122888,
+        "title": "Ben-hur (2016)",
+        "genres": "(no genres listed)"
+      },
+      {
+        "movieId": 122896,
+        "title": "Pirates of the Caribbean: Dead Men Tell No Tales (2017)",
+        "genres": "(no genres listed)"
+      },
+      {
+        "movieId": 129250,
+        "title": "Superfast! (2015)",
+        "genres": "(no genres listed)"
+      },
+      {
+        "movieId": 132084,
+        "title": "Let It Be Me (1995)",
+        "genres": "(no genres listed)"
+      },
+      {
+        "movieId": 134861,
+        "title": "Trevor Noah: African American (2013)",
+        "genres": "(no genres listed)"
+      },
+      {
+        "movieId": 141131,
+        "title": "Guardians (2016)",
+        "genres": "(no genres listed)"
+      },
+      {
+        "movieId": 141866,
+        "title": "Green Room (2015)",
+        "genres": "(no genres listed)"
+      },
+      {
+        "movieId": 142456,
+        "title": "The Brand New Testament (2015)",
+        "genres": "(no genres listed)"
+      },
+      {
+        "movieId": 143410,
+        "title": "Hyena Road",
+        "genres": "(no genres listed)"
+      }
+    ]
+  },
+  "recommendations": [
+    "Keep unrated movies for content/cold-start demos; filter them out for pure collaborative training if needed.",
+    "Use warm-item ranking as the primary pure-CF metric, and report cold-item metrics separately for hybrid/content fallback.",
+    "Use minimum-interaction filters or segment metrics by item popularity for stable offline comparisons.",
+    "Treat zero budget/revenue as missing values; do not use finance metadata as a primary feature."
+  ]
+}

@@ -636,6 +636,12 @@ class HybridMovieRecommender:
                 str(getattr(row, "tagline", "")),
                 str(getattr(row, "director", "")),
                 str(getattr(row, "cast", "")).replace("|", " "),
+                str(getattr(row, "keywords", "")).replace("|", " "),
+                str(getattr(row, "tag_genome_tags", "")).replace("|", " "),
+                str(getattr(row, "original_language", "")),
+                str(getattr(row, "production_countries", "")).replace("|", " "),
+                str(getattr(row, "collection_name", "")),
+                str(getattr(row, "certification", "")),
                 " ".join(tag_map.get(movie_id, [])),
             ]
             text.append(" ".join(parts))

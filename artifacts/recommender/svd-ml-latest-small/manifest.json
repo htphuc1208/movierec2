@@ -1,0 +1,64 @@
+{
+  "artifact_version": 1,
+  "created_at": "2026-05-30T04:36:05.953813+00:00",
+  "dataset": "ml-latest-small",
+  "model_name": "svd-pytorch",
+  "model_source": "pytorch_svd",
+  "positive_threshold": 4.0,
+  "weights": {
+    "collaborative": 0.55,
+    "content": 0.35,
+    "popularity": 0.1
+  },
+  "collaborative": {
+    "mode": "funk_svd",
+    "engine": "torch",
+    "factors": 24
+  },
+  "content": {
+    "backend": "tfidf"
+  },
+  "files": {
+    "collaborative": "collaborative.npz"
+  },
+  "metrics": {
+    "test": {
+      "train_rmse": 0.6880683302879333,
+      "val_rmse": 0.8939880132675171,
+      "test_rmse": 0.900019645690918,
+      "test_mae": 0.6928790211677551,
+      "precision_at_k": 0.00673758865248227,
+      "recall_at_k": 0.008812766490863806,
+      "ndcg_at_k": 0.008745904266937306,
+      "mrr_at_k": 0.018238489249127545,
+      "best_epoch": 2
+    }
+  },
+  "config": {
+    "data_dir": "data/ml-latest-small",
+    "artifact_path": "artifacts/svd_ml_latest_small.pt",
+    "recommender_artifact_dir": "artifacts/recommender/svd-ml-latest-small",
+    "dataset_name": "ml-latest-small",
+    "factors": 24,
+    "epochs": 80,
+    "batch_size": 2048,
+    "lr": 0.01,
+    "optimizer": "adamw",
+    "momentum": 0.0,
+    "weight_decay": 0.0,
+    "embedding_reg": 0.02,
+    "bias_reg": 0.005,
+    "bias_shrinkage": 5.0,
+    "init_std": 0.05,
+    "max_grad_norm": 5.0,
+    "lr_decay_factor": 0.5,
+    "lr_patience": 2,
+    "min_lr": 1e-05,
+    "patience": 8,
+    "top_k": 10,
+    "positive_threshold": 4.0,
+    "seed": 42,
+    "device": "",
+    "verbose": false
+  }
+}

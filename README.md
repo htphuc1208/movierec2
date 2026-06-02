@@ -182,10 +182,11 @@ Create a TMDb API key and run:
 
 ```bash
 export TMDB_API_KEY=your_key
-python3 scripts/enrich_tmdb.py --data-dir data/ml-latest-small --limit 1000
+python3 scripts/enrich_tmdb.py --data-dir data/ml-latest-small --retry-empty --sleep 0.3
 ```
 
 The enrichment script writes `enriched_movies.csv` with poster URL, overview, director, cast, and production metadata when the API is reachable.
+For the current data policy, warm/cold split handling, TMDb keywords, Tag Genome, and benchmark dataset choices, see [docs/data_strategy.md](docs/data_strategy.md).
 
 ## Letterboxd Crawl Data
 

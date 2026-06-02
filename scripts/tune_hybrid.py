@@ -131,6 +131,8 @@ def tune(args: argparse.Namespace) -> dict[str, Any]:
     loader = MovieLensDataLoader(args.data_dir)
     bundle = loader.load()
     train, val, test = loader.train_val_test_split(bundle.ratings)
+    warm_val, cold_val = loader.split_warm_cold_items(train, val)
+    warm_test, cold_test = loader.split_warm_cold_items(train, test)
     model = build_model(args, bundle, train)
     validation_relevant = relevant_by_user(val, args.positive_threshold)
     test_relevant = relevant_by_user(test, args.positive_threshold)
@@ -155,6 +157,8 @@ def tune(args: argparse.Namespace) -> dict[str, Any]:
 
     set_weights(model, best_weights)
     test_metrics = evaluate_top_k(model, test, args.top_k, args.positive_threshold, best_weights, component_cache)
+    warm_test_metrics = evaluate_top_k(model, warm_test, args.top_k, args.positive_threshold, best_weights, component_cache)
+    cold_test_metrics = evaluate_top_k(model, cold_test, args.top_k, args.positive_threshold, best_weights, component_cache)
     test_metrics["rmse"] = evaluate_rating_rmse(model, test)
     dataset_name = args.dataset_name or dataset_name_from_dir(args.data_dir)
     result = {
@@ -167,7 +171,17 @@ def tune(args: argparse.Namespace) -> dict[str, Any]:
             "popularity": best_weights[2],
         },
         "validation": best_metrics,
+        "validation_segments": {
+            "warm_interactions": len(warm_val),
+            "cold_interactions": len(cold_val),
+        },
         "test": test_metrics,
+        "test_segments": {
+            "warm_interactions": len(warm_test),
+            "cold_interactions": len(cold_test),
+            "warm": warm_test_metrics,
+            "cold": cold_test_metrics,
+        },
         "model_info": model.model_info(),
     }
 
@@ -176,7 +190,16 @@ def tune(args: argparse.Namespace) -> dict[str, Any]:
         output_dir,
         dataset_name=dataset_name,
         model_name=f"hybrid-{args.cf_model.lower()}-{args.content_backend}",
-        metrics={"validation": best_metrics, "test": test_metrics},
+        metrics={
+            "validation": best_metrics,
+            "test": test_metrics,
+            "test_segments": {
+                "warm_interactions": len(warm_test),
+                "cold_interactions": len(cold_test),
+                "warm": warm_test_metrics,
+                "cold": cold_test_metrics,
+            },
+        },
         extra_manifest={
             "tuning": {
                 "primary_metric": f"ndcg@{args.top_k}",

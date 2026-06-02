@@ -1,0 +1,100 @@
+[
+  {
+    "model": "Pop",
+    "best_valid_score": 0.037,
+    "best_valid_result": {
+      "precision@10": 0.0234,
+      "precision@20": 0.0212,
+      "recall@10": 0.0473,
+      "recall@20": 0.0841,
+      "ndcg@10": 0.037,
+      "ndcg@20": 0.0483,
+      "mrr@10": 0.0596,
+      "mrr@20": 0.0655
+    },
+    "test_result": {
+      "precision@10": 0.0161,
+      "precision@20": 0.0148,
+      "recall@10": 0.037,
+      "recall@20": 0.0574,
+      "ndcg@10": 0.0313,
+      "ndcg@20": 0.0382,
+      "mrr@10": 0.0514,
+      "mrr@20": 0.0558
+    }
+  },
+  {
+    "model": "ItemKNN",
+    "best_valid_score": 0.0693,
+    "best_valid_result": {
+      "precision@10": 0.0373,
+      "precision@20": 0.0313,
+      "recall@10": 0.0925,
+      "recall@20": 0.1426,
+      "ndcg@10": 0.0693,
+      "ndcg@20": 0.0846,
+      "mrr@10": 0.1049,
+      "mrr@20": 0.1121
+    },
+    "test_result": {
+      "precision@10": 0.0265,
+      "precision@20": 0.0243,
+      "recall@10": 0.0558,
+      "recall@20": 0.1103,
+      "ndcg@10": 0.0431,
+      "ndcg@20": 0.0595,
+      "mrr@10": 0.0717,
+      "mrr@20": 0.0791
+    }
+  },
+  {
+    "model": "BPR",
+    "best_valid_score": 0.0322,
+    "best_valid_result": {
+      "precision@10": 0.0207,
+      "precision@20": 0.0174,
+      "recall@10": 0.0358,
+      "recall@20": 0.0578,
+      "ndcg@10": 0.0322,
+      "ndcg@20": 0.0386,
+      "mrr@10": 0.0587,
+      "mrr@20": 0.0641
+    },
+    "test_result": {
+      "precision@10": 0.0161,
+      "precision@20": 0.0141,
+      "recall@10": 0.0298,
+      "recall@20": 0.0475,
+      "ndcg@10": 0.0228,
+      "ndcg@20": 0.0289,
+      "mrr@10": 0.0373,
+      "mrr@20": 0.0415
+    },
+    "artifact_dir": "artifacts/recommender/recbole-bpr"
+  },
+  {
+    "model": "LightGCN",
+    "best_valid_score": 0.0469,
+    "best_valid_result": {
+      "precision@10": 0.0257,
+      "precision@20": 0.0215,
+      "recall@10": 0.0608,
+      "recall@20": 0.0918,
+      "ndcg@10": 0.0469,
+      "ndcg@20": 0.0559,
+      "mrr@10": 0.0722,
+      "mrr@20": 0.0782
+    },
+    "test_result": {
+      "precision@10": 0.0178,
+      "precision@20": 0.0157,
+      "recall@10": 0.0411,
+      "recall@20": 0.0655,
+      "ndcg@10": 0.0347,
+      "ndcg@20": 0.0421,
+      "mrr@10": 0.0621,
+      "mrr@20": 0.0668
+    },
+    "artifact_dir": "artifacts/recommender/recbole-lightgcn"
+  }
+]

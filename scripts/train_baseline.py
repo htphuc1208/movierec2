@@ -14,14 +14,13 @@ from evaluation import mrr_at_k, ndcg_at_k, precision_at_k, recall_at_k, rmse
 from models import HybridMovieRecommender
 
 
-def evaluate(data_dir: str, top_k: int, artifact_dir: str = "", dataset_name: str = "") -> dict[str, float]:
-    loader = MovieLensDataLoader(data_dir)
-    bundle = loader.load()
-    train, _, test = loader.train_val_test_split(bundle.ratings)
-    model = HybridMovieRecommender().fit(bundle.movies, train, bundle.tags)
-
+def evaluate_top_k_segment(
+    model: HybridMovieRecommender,
+    holdout,
+    top_k: int,
+) -> dict[str, float]:
     relevant_by_user: dict[int, set[int]] = defaultdict(set)
-    for row in test.itertuples():
+    for row in holdout.itertuples():
         if float(row.rating) >= model.min_rating:
             relevant_by_user[int(row.userId)].add(int(row.movieId))
 
@@ -29,8 +28,6 @@ def evaluate(data_dir: str, top_k: int, artifact_dir: str = "", dataset_name: st
     recall_values = []
     ndcg_values = []
     mrr_values = []
-    y_true = []
-    y_pred = []
 
     for user_id, relevant in relevant_by_user.items():
         recs = model.recommend(user_id=user_id, top_k=top_k, exclude_seen=True)
@@ -40,21 +37,49 @@ def evaluate(data_dir: str, top_k: int, artifact_dir: str = "", dataset_name: st
         ndcg_values.append(ndcg_at_k(recommended_ids, relevant, top_k))
         mrr_values.append(mrr_at_k(recommended_ids, relevant, top_k))
 
-    for row in test.itertuples():
-        y_true.append(float(row.rating))
-        y_pred.append(model.predict_rating(int(row.userId), int(row.movieId)))
-
     def avg(values: list[float]) -> float:
         return sum(values) / len(values) if values else 0.0
 
-    rating_rmse = rmse(y_true, y_pred)
-    metrics = {
+    return {
         f"precision@{top_k}": avg(precision_values),
         f"recall@{top_k}": avg(recall_values),
         f"ndcg@{top_k}": avg(ndcg_values),
         f"mrr@{top_k}": avg(mrr_values),
+    }
+
+
+def evaluate_rating_segment(model: HybridMovieRecommender, holdout) -> float:
+    y_true = []
+    y_pred = []
+    for row in holdout.itertuples():
+        y_true.append(float(row.rating))
+        y_pred.append(model.predict_rating(int(row.userId), int(row.movieId)))
+    return rmse(y_true, y_pred)
+
+
+def prefixed(prefix: str, metrics: dict[str, float]) -> dict[str, float]:
+    return {f"{prefix}_{name}": value for name, value in metrics.items()}
+
+
+def evaluate(data_dir: str, top_k: int, artifact_dir: str = "", dataset_name: str = "") -> dict[str, float]:
+    loader = MovieLensDataLoader(data_dir)
+    bundle = loader.load()
+    train, _, test = loader.train_val_test_split(bundle.ratings)
+    warm_test, cold_test = loader.split_warm_cold_items(train, test)
+    model = HybridMovieRecommender().fit(bundle.movies, train, bundle.tags)
+
+    all_metrics = evaluate_top_k_segment(model, test, top_k)
+    warm_metrics = evaluate_top_k_segment(model, warm_test, top_k)
+    cold_metrics = evaluate_top_k_segment(model, cold_test, top_k)
+    rating_rmse = evaluate_rating_segment(model, test)
+    metrics = {
+        **all_metrics,
+        **prefixed("warm", warm_metrics),
+        **prefixed("cold", cold_metrics),
         "rating_rmse": rating_rmse,
         "rmse": rating_rmse,
+        "warm_test_interactions": float(len(warm_test)),
+        "cold_test_interactions": float(len(cold_test)),
     }
     if artifact_dir:
         model.save_artifact(

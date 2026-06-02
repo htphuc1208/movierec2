@@ -28,6 +28,19 @@ class LightGCNTrainingResult:
     recall_at_k: float
     ndcg_at_k: float
     mrr_at_k: float
+    all_precision_at_k: float
+    all_recall_at_k: float
+    all_ndcg_at_k: float
+    all_mrr_at_k: float
+    cold_precision_at_k: float
+    cold_recall_at_k: float
+    cold_ndcg_at_k: float
+    cold_mrr_at_k: float
+    train_item_count: int
+    catalog_item_count: int
+    cold_test_interactions: int
+    warm_test_interactions: int
+    cold_positive_interactions: int
     best_epoch: int
 
 
@@ -235,7 +248,9 @@ def train(args: argparse.Namespace) -> LightGCNTrainingResult:
     loader = MovieLensDataLoader(args.data_dir)
     bundle = loader.load()
     train_df, val_df, test_df = loader.train_val_test_split(bundle.ratings)
-    user_to_idx, item_to_idx, idx_to_user, idx_to_item = build_id_maps(bundle.movies, train_df)
+    warm_test_df, cold_test_df = loader.split_warm_cold_items(train_df, test_df)
+    train_movies = loader.rated_movies(bundle.movies, train_df)
+    user_to_idx, item_to_idx, idx_to_user, idx_to_item = build_id_maps(train_movies, train_df)
 
     num_users = len(user_to_idx)
     num_items = len(item_to_idx)
@@ -354,18 +369,39 @@ def train(args: argparse.Namespace) -> LightGCNTrainingResult:
     if best_state is not None:
         model.load_state_dict(best_state)
 
-    top_k_metrics = evaluate_top_k(
+    warm_top_k_metrics = evaluate_top_k(
+        model, norm_adj, train_df, warm_test_df, user_to_idx, item_to_idx, idx_to_item,
+        args.top_k, args.positive_threshold, torch,
+    )
+    all_top_k_metrics = evaluate_top_k(
         model, norm_adj, train_df, test_df, user_to_idx, item_to_idx, idx_to_item,
+        args.top_k, args.positive_threshold, torch,
+    )
+    cold_top_k_metrics = evaluate_top_k(
+        model, norm_adj, train_df, cold_test_df, user_to_idx, item_to_idx, idx_to_item,
         args.top_k, args.positive_threshold, torch,
     )
 
     result = LightGCNTrainingResult(
         train_loss=train_loss,
         val_loss=best_val_loss,
-        precision_at_k=top_k_metrics[f"precision@{args.top_k}"],
-        recall_at_k=top_k_metrics[f"recall@{args.top_k}"],
-        ndcg_at_k=top_k_metrics[f"ndcg@{args.top_k}"],
-        mrr_at_k=top_k_metrics[f"mrr@{args.top_k}"],
+        precision_at_k=warm_top_k_metrics[f"precision@{args.top_k}"],
+        recall_at_k=warm_top_k_metrics[f"recall@{args.top_k}"],
+        ndcg_at_k=warm_top_k_metrics[f"ndcg@{args.top_k}"],
+        mrr_at_k=warm_top_k_metrics[f"mrr@{args.top_k}"],
+        all_precision_at_k=all_top_k_metrics[f"precision@{args.top_k}"],
+        all_recall_at_k=all_top_k_metrics[f"recall@{args.top_k}"],
+        all_ndcg_at_k=all_top_k_metrics[f"ndcg@{args.top_k}"],
+        all_mrr_at_k=all_top_k_metrics[f"mrr@{args.top_k}"],
+        cold_precision_at_k=cold_top_k_metrics[f"precision@{args.top_k}"],
+        cold_recall_at_k=cold_top_k_metrics[f"recall@{args.top_k}"],
+        cold_ndcg_at_k=cold_top_k_metrics[f"ndcg@{args.top_k}"],
+        cold_mrr_at_k=cold_top_k_metrics[f"mrr@{args.top_k}"],
+        train_item_count=len(item_to_idx),
+        catalog_item_count=int(bundle.movies["movieId"].nunique()),
+        cold_test_interactions=len(cold_test_df),
+        warm_test_interactions=len(warm_test_df),
+        cold_positive_interactions=int((cold_test_df["rating"] >= args.positive_threshold).sum()),
         best_epoch=best_epoch,
     )
 

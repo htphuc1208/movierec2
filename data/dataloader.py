@@ -6,6 +6,24 @@ from typing import Iterable
 
 import pandas as pd
 
+OPTIONAL_TEXT_METADATA_COLUMNS = [
+    "keywords",
+    "tag_genome_tags",
+    "original_language",
+    "production_countries",
+    "collection_name",
+    "release_date",
+    "certification",
+]
+
+OPTIONAL_NUMERIC_METADATA_COLUMNS = [
+    "runtime",
+    "vote_average",
+    "vote_count",
+    "popularity",
+    "collection_id",
+]
+
 
 @dataclass(frozen=True)
 class MovieDataBundle:
@@ -36,7 +54,7 @@ class MovieLensDataLoader:
         movies["genres"] = movies["genres"].fillna("").astype(str)
 
         if "year" not in movies.columns:
-            movies["year"] = movies["title"].str.extract(r"\((\d{4})\)").fillna("")
+            movies["year"] = self._extract_year(movies["title"])
 
         links_path = self.data_dir / "links.csv"
         if links_path.exists():
@@ -52,8 +70,40 @@ class MovieLensDataLoader:
             for column in ["overview", "tagline", "director", "cast", "poster_url", "budget", "revenue"]:
                 enriched_column = f"{column}_enriched"
                 if enriched_column in movies.columns:
+                    if column not in movies.columns:
+                        movies[column] = pd.NA
                     movies[column] = movies[column].combine_first(movies[enriched_column])
                     movies = movies.drop(columns=[enriched_column])
+            if "directors" in movies.columns:
+                if "director" not in movies.columns:
+                    movies["director"] = pd.NA
+                movies["director"] = movies["director"].replace("", pd.NA).combine_first(movies["directors"])
+                movies = movies.drop(columns=["directors"])
+            if "top_cast" in movies.columns:
+                if "cast" not in movies.columns:
+                    movies["cast"] = pd.NA
+                movies["cast"] = movies["cast"].replace("", pd.NA).combine_first(movies["top_cast"])
+                movies = movies.drop(columns=["top_cast"])
+            if "tmdb_poster_path" in movies.columns:
+                if "poster_url" not in movies.columns:
+                    movies["poster_url"] = pd.NA
+                poster_path = movies["tmdb_poster_path"].fillna("").astype(str).str.strip()
+                poster_url = poster_path.where(poster_path.eq("") | poster_path.str.startswith("http"), "https://image.tmdb.org/t/p/w500" + poster_path)
+                movies["poster_url"] = movies["poster_url"].replace("", pd.NA).combine_first(poster_url).fillna("")
+                movies = movies.drop(columns=["tmdb_poster_path"])
+            if "genres_enriched" in movies.columns:
+                missing_genres = movies["genres"].fillna("").astype(str).str.strip().isin(["", "(no genres listed)"])
+                enriched_genres = movies["genres_enriched"].fillna("").astype(str).str.strip()
+                movies.loc[missing_genres & enriched_genres.ne(""), "genres"] = enriched_genres
+                movies = movies.drop(columns=["genres_enriched"])
+            if "year_enriched" in movies.columns:
+                movies["year"] = movies["year"].replace("", pd.NA).combine_first(movies["year_enriched"])
+                movies = movies.drop(columns=["year_enriched"])
+            if "release_date" in movies.columns:
+                release_year = movies["release_date"].fillna("").astype(str).str.extract(r"^(\d{4})")[0].fillna("")
+                movies["year"] = movies["year"].replace("", pd.NA).combine_first(release_year).fillna("")
+
+        movies = self._merge_tag_genome(movies)
 
         for column in ["overview", "tagline", "director", "cast", "poster_url"]:
             if column not in movies.columns:
@@ -64,6 +114,16 @@ class MovieLensDataLoader:
             if column not in movies.columns:
                 movies[column] = ""
             movies[column] = movies[column].fillna("")
+
+        for column in OPTIONAL_TEXT_METADATA_COLUMNS:
+            if column not in movies.columns:
+                movies[column] = ""
+            movies[column] = movies[column].fillna("").astype(str)
+
+        for column in OPTIONAL_NUMERIC_METADATA_COLUMNS:
+            if column not in movies.columns:
+                movies[column] = 0
+            movies[column] = pd.to_numeric(movies[column], errors="coerce").fillna(0)
 
         return movies
 
@@ -127,6 +187,21 @@ class MovieLensDataLoader:
         )
 
     @staticmethod
+    def rated_movies(movies: pd.DataFrame, ratings: pd.DataFrame) -> pd.DataFrame:
+        """Return catalog rows with at least one rating in the provided ratings frame."""
+
+        rated_movie_ids = set(ratings["movieId"].astype(int).unique().tolist())
+        return movies.loc[movies["movieId"].astype(int).isin(rated_movie_ids)].reset_index(drop=True)
+
+    @staticmethod
+    def split_warm_cold_items(train: pd.DataFrame, holdout: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+        """Split holdout interactions by whether the item appears in train."""
+
+        train_movie_ids = set(train["movieId"].astype(int).unique().tolist())
+        warm_mask = holdout["movieId"].astype(int).isin(train_movie_ids)
+        return holdout.loc[warm_mask].copy(), holdout.loc[~warm_mask].copy()
+
+    @staticmethod
     def build_implicit_interactions(
         ratings: pd.DataFrame,
         positive_threshold: float = 4.0,
@@ -147,8 +222,44 @@ class MovieLensDataLoader:
             raise FileNotFoundError(f"Missing required data file: {path}")
         return pd.read_csv(path)
 
+    def _merge_tag_genome(self, movies: pd.DataFrame) -> pd.DataFrame:
+        tag_genome_path = self.data_dir / "tag_genome.csv"
+        if not tag_genome_path.exists():
+            return movies
+
+        tag_genome = pd.read_csv(tag_genome_path)
+        if tag_genome.empty or "movieId" not in tag_genome.columns:
+            return movies
+
+        tag_genome["movieId"] = tag_genome["movieId"].astype(int)
+        if {"tag", "relevance"}.issubset(tag_genome.columns):
+            tag_genome["tag"] = tag_genome["tag"].fillna("").astype(str)
+            tag_genome["relevance"] = pd.to_numeric(tag_genome["relevance"], errors="coerce").fillna(0)
+            top_tags = (
+                tag_genome.sort_values(["movieId", "relevance"], ascending=[True, False])
+                .groupby("movieId")
+                .head(20)
+                .groupby("movieId")["tag"]
+                .apply(lambda values: " ".join(value for value in values if value.strip()))
+                .reset_index(name="tag_genome_tags")
+            )
+        elif "tag_genome_tags" in tag_genome.columns:
+            top_tags = tag_genome[["movieId", "tag_genome_tags"]].copy()
+        else:
+            return movies
+
+        movies = movies.merge(top_tags, on="movieId", how="left", suffixes=("", "_tag_genome"))
+        if "tag_genome_tags_tag_genome" in movies.columns:
+            movies["tag_genome_tags"] = movies.get("tag_genome_tags", pd.Series("", index=movies.index)).replace("", pd.NA).combine_first(movies["tag_genome_tags_tag_genome"])
+            movies = movies.drop(columns=["tag_genome_tags_tag_genome"])
+        return movies
+
     @staticmethod
     def _concat_or_empty(parts: list[pd.DataFrame], columns: Iterable[str]) -> pd.DataFrame:
         if not parts:
             return pd.DataFrame(columns=list(columns))
         return pd.concat(parts, ignore_index=True)
+
+    @staticmethod
+    def _extract_year(titles: pd.Series) -> pd.Series:
+        return titles.astype(str).str.extract(r"\((\d{4})(?:[–-]\d{4})?\)")[0].fillna("")

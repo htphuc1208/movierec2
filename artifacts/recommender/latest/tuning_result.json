@@ -1,0 +1,96 @@
+{
+  "dataset": "ml-latest-small",
+  "cf_model": "LightGCN",
+  "content_backend": "tfidf",
+  "weights": {
+    "collaborative": 0.37499999999999994,
+    "content": 0.5625,
+    "popularity": 0.0625
+  },
+  "validation": {
+    "precision@10": 0.04592198581560284,
+    "recall@10": 0.08706501454991214,
+    "ndcg@10": 0.07998424558367968,
+    "mrr@10": 0.1467114150624789
+  },
+  "test": {
+    "precision@10": 0.03280141843971631,
+    "recall@10": 0.054787915558931435,
+    "ndcg@10": 0.050146492362929035,
+    "mrr@10": 0.08804739389845773,
+    "rmse": 1.7947252988815308
+  },
+  "model_info": {
+    "model_source": "artifact",
+    "model_name": "recbole-LightGCN",
+    "dataset": "ml-latest-small",
+    "artifact_path": "artifacts/recommender/recbole-lightgcn",
+    "weights": {
+      "collaborative": 0.37499999999999994,
+      "content": 0.5625,
+      "popularity": 0.0625
+    },
+    "positive_threshold": 4.0,
+    "collaborative_mode": "embedding",
+    "metrics": {
+      "precision@10": 0.0178,
+      "precision@20": 0.0157,
+      "recall@10": 0.0411,
+      "recall@20": 0.0655,
+      "ndcg@10": 0.0347,
+      "ndcg@20": 0.0421,
+      "mrr@10": 0.0621,
+      "mrr@20": 0.0668
+    },
+    "user_count": 609,
+    "movie_count": 9742
+  },
+  "artifact_dir": "artifacts/recommender/latest",
+  "manifest": {
+    "artifact_version": 1,
+    "created_at": "2026-05-29T12:04:43.560177+00:00",
+    "dataset": "ml-latest-small",
+    "model_name": "hybrid-lightgcn-tfidf",
+    "model_source": "artifact",
+    "positive_threshold": 4.0,
+    "weights": {
+      "collaborative": 0.37499999999999994,
+      "content": 0.5625,
+      "popularity": 0.0625
+    },
+    "collaborative": {
+      "mode": "embedding",
+      "factors": 64
+    },
+    "content": {
+      "backend": "tfidf"
+    },
+    "files": {
+      "collaborative": "collaborative.npz"
+    },
+    "metrics": {
+      "validation": {
+        "precision@10": 0.04592198581560284,
+        "recall@10": 0.08706501454991214,
+        "ndcg@10": 0.07998424558367968,
+        "mrr@10": 0.1467114150624789
+      },
+      "test": {
+        "precision@10": 0.03280141843971631,
+        "recall@10": 0.054787915558931435,
+        "ndcg@10": 0.050146492362929035,
+        "mrr@10": 0.08804739389845773,
+        "rmse": 1.7947252988815308
+      }
+    },
+    "tuning": {
+      "primary_metric": "ndcg@10",
+      "tie_breakers": [
+        "mrr@10",
+        "recall@10",
+        "precision@10"
+      ],
+      "candidate_count": 123
+    }
+  }
+}

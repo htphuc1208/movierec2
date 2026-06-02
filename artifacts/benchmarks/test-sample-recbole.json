@@ -1,0 +1,18 @@
+[
+  {
+    "model": "Pop",
+    "best_valid_score": 0.1418,
+    "best_valid_result": {
+      "precision@10": 0.03,
+      "recall@10": 0.3,
+      "ndcg@10": 0.1418,
+      "mrr@10": 0.0917
+    },
+    "test_result": {
+      "precision@10": 0.07,
+      "recall@10": 0.7,
+      "ndcg@10": 0.2946,
+      "mrr@10": 0.172
+    }
+  }
+]

@@ -1,0 +1,56 @@
+{
+  "artifact_version": 1,
+  "created_at": "2026-05-30T15:06:46.085736+00:00",
+  "dataset": "sample",
+  "model_name": "lightgcn-pytorch",
+  "model_source": "pytorch_lightgcn",
+  "positive_threshold": 4.0,
+  "weights": {
+    "collaborative": 0.55,
+    "content": 0.35,
+    "popularity": 0.1
+  },
+  "collaborative": {
+    "mode": "embedding",
+    "engine": "torch-native",
+    "factors": 8,
+    "layers": 1
+  },
+  "content": {
+    "backend": "tfidf"
+  },
+  "files": {
+    "collaborative": "collaborative.npz"
+  },
+  "metrics": {
+    "test": {
+      "train_loss": 0.6419217189153036,
+      "val_loss": 0.6844339966773987,
+      "precision_at_k": 0.07500000000000001,
+      "recall_at_k": 0.375,
+      "ndcg_at_k": 0.2060890392971821,
+      "mrr_at_k": 0.15,
+      "best_epoch": 2
+    }
+  },
+  "config": {
+    "data_dir": "data/sample",
+    "artifact_path": "artifacts/lightgcn_sample_smoke.pt",
+    "recommender_artifact_dir": "artifacts/recommender/lightgcn-sample-smoke",
+    "dataset_name": "sample",
+    "factors": 8,
+    "layers": 1,
+    "epochs": 2,
+    "batch_size": 16,
+    "lr": 0.001,
+    "weight_decay": 1e-05,
+    "l2_reg": 0.0,
+    "max_grad_norm": 5.0,
+    "patience": 10,
+    "top_k": 5,
+    "positive_threshold": 4.0,
+    "seed": 42,
+    "device": "",
+    "verbose": false
+  }
+}
