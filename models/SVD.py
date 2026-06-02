@@ -11,19 +11,21 @@ except ImportError:
 if torch is not None:
 
     class SVDModel(nn.Module):
-        """Funk SVD"""
+        """Biased Funk-SVD for explicit rating prediction."""
 
         def __init__(
             self, 
             num_users: int, 
             num_items: int, 
             embedding_dim: int = 64, 
-            global_mean: float = 0.0
+            global_mean: float = 0.0,
+            init_std: float = 0.05,
         ) -> None:
             super().__init__()
             self.num_users = num_users
             self.num_items = num_items
             self.embedding_dim = embedding_dim
+            self.init_std = init_std
             
             # Khởi tạo hằng số điểm trung bình toàn cục
             self.register_buffer("global_mean", torch.tensor(global_mean, dtype=torch.float32))
@@ -36,11 +38,29 @@ if torch is not None:
             self.user_bias = nn.Embedding(num_users, 1)
             self.item_bias = nn.Embedding(num_items, 1)
 
-            # Khởi tạo trọng số ngẫu nhiên theo phân phối chuẩn nhỏ
-            nn.init.normal_(self.user_embedding.weight, std=0.1)
-            nn.init.normal_(self.item_embedding.weight, std=0.1)
+            self.reset_parameters(init_std)
+
+        def reset_parameters(self, init_std: float | None = None) -> None:
+            """Initialize latent factors with a small normal distribution."""
+
+            std = self.init_std if init_std is None else init_std
+            nn.init.normal_(self.user_embedding.weight, mean=0.0, std=std)
+            nn.init.normal_(self.item_embedding.weight, mean=0.0, std=std)
             nn.init.zeros_(self.user_bias.weight)
             nn.init.zeros_(self.item_bias.weight)
+
+        def initialize_biases(
+            self,
+            user_bias: torch.Tensor | None = None,
+            item_bias: torch.Tensor | None = None,
+        ) -> None:
+            """Seed bias terms from shrinkage priors before SGD/Adam fine-tuning."""
+
+            with torch.no_grad():
+                if user_bias is not None:
+                    self.user_bias.weight.copy_(user_bias.reshape(-1, 1).to(self.user_bias.weight))
+                if item_bias is not None:
+                    self.item_bias.weight.copy_(item_bias.reshape(-1, 1).to(self.item_bias.weight))
 
         def forward(self, user_ids: torch.Tensor, item_ids: torch.Tensor) -> torch.Tensor:
             """Dự đoán điểm rating cho một cặp user_ids và item_ids.

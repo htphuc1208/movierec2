@@ -5,6 +5,7 @@ import json
 import random
 import sys
 from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -76,6 +77,51 @@ def ratings_to_tensors(ratings: pd.DataFrame, user_to_idx: dict[int, int], item_
     items = torch.tensor([item_to_idx[int(movie_id)] for movie_id in filtered["movieId"]], dtype=torch.long)
     labels = torch.tensor(filtered["rating"].astype(float).to_numpy(), dtype=torch.float32)
     return users, items, labels
+
+
+def build_bias_priors(
+    ratings: pd.DataFrame,
+    user_to_idx: dict[int, int],
+    item_to_idx: dict[int, int],
+    global_mean: float,
+    shrinkage: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Build shrinkage-smoothed user/item bias priors from the training split."""
+
+    user_bias = np.zeros(len(user_to_idx), dtype=np.float32)
+    item_bias = np.zeros(len(item_to_idx), dtype=np.float32)
+    shrink = max(float(shrinkage), 0.0)
+
+    user_stats = ratings.groupby("userId")["rating"].agg(["mean", "count"])
+    for user_id, row in user_stats.iterrows():
+        idx = user_to_idx.get(int(user_id))
+        if idx is None:
+            continue
+        count = float(row["count"])
+        user_bias[idx] = float(row["mean"] - global_mean) * count / (count + shrink)
+
+    item_stats = ratings.groupby("movieId")["rating"].agg(["mean", "count"])
+    for movie_id, row in item_stats.iterrows():
+        idx = item_to_idx.get(int(movie_id))
+        if idx is None:
+            continue
+        count = float(row["count"])
+        item_bias[idx] = float(row["mean"] - global_mean) * count / (count + shrink)
+
+    return user_bias, item_bias
+
+
+def regularization_loss(model: Any, users: Any, items: Any, embedding_reg: float, bias_reg: float, torch) -> Any:
+    reg = torch.zeros((), dtype=torch.float32, device=users.device)
+    if embedding_reg > 0:
+        user_vecs = model.user_embedding(users)
+        item_vecs = model.item_embedding(items)
+        reg = reg + embedding_reg * (user_vecs.pow(2).sum(dim=1) + item_vecs.pow(2).sum(dim=1)).mean()
+    if bias_reg > 0:
+        user_bias = model.user_bias(users).squeeze(1)
+        item_bias = model.item_bias(items).squeeze(1)
+        reg = reg + bias_reg * (user_bias.pow(2) + item_bias.pow(2)).mean()
+    return reg
 
 
 def predict_frame(model, frame: pd.DataFrame, user_to_idx: dict[int, int], item_to_idx: dict[int, int], batch_size: int, device, torch) -> tuple[list[float], list[float]]:
@@ -164,6 +210,62 @@ def evaluate_top_k(
     }
 
 
+def export_recommender_artifact(
+    model: Any,
+    output_dir: str | Path,
+    idx_to_user: dict[int, int],
+    idx_to_item: dict[int, int],
+    dataset_name: str,
+    config: dict[str, Any],
+    metrics: dict[str, Any],
+    positive_threshold: float,
+) -> Path:
+    """Export PyTorch SVD weights into the lightweight API/UI artifact format."""
+
+    path = Path(output_dir)
+    path.mkdir(parents=True, exist_ok=True)
+    model = model.cpu()
+    user_ids = np.asarray([idx_to_user[idx] for idx in range(len(idx_to_user))], dtype=np.int64)
+    movie_ids = np.asarray([idx_to_item[idx] for idx in range(len(idx_to_item))], dtype=np.int64)
+    user_embeddings = model.user_embedding.weight.detach().cpu().numpy().astype(np.float32)
+    item_embeddings = model.item_embedding.weight.detach().cpu().numpy().astype(np.float32)
+    user_bias = model.user_bias.weight.detach().cpu().numpy().reshape(-1).astype(np.float32)
+    item_bias = model.item_bias.weight.detach().cpu().numpy().reshape(-1).astype(np.float32)
+    global_mean = float(model.global_mean.detach().cpu().item())
+
+    np.savez_compressed(
+        path / "collaborative.npz",
+        user_ids=user_ids,
+        movie_ids=movie_ids,
+        user_embeddings=user_embeddings,
+        item_embeddings=item_embeddings,
+        user_bias=user_bias,
+        item_bias=item_bias,
+        global_mean=np.asarray([global_mean], dtype=np.float32),
+    )
+
+    manifest = {
+        "artifact_version": 1,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "dataset": dataset_name,
+        "model_name": "svd-pytorch",
+        "model_source": "pytorch_svd",
+        "positive_threshold": positive_threshold,
+        "weights": {"collaborative": 0.55, "content": 0.35, "popularity": 0.10},
+        "collaborative": {
+            "mode": "funk_svd",
+            "engine": "torch",
+            "factors": int(user_embeddings.shape[1]),
+        },
+        "content": {"backend": "tfidf"},
+        "files": {"collaborative": "collaborative.npz"},
+        "metrics": {"test": metrics},
+        "config": config,
+    }
+    (path / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    return path
+
+
 def train(args: argparse.Namespace) -> SVDTrainingResult:
     torch, DataLoader, TensorDataset = require_torch()
     from models.SVD import SVDModel
@@ -186,8 +288,28 @@ def train(args: argparse.Namespace) -> SVDTrainingResult:
         num_items=len(item_to_idx),
         embedding_dim=args.factors,
         global_mean=global_mean,
+        init_std=args.init_std,
     ).to(device)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+
+    if args.bias_shrinkage >= 0:
+        user_bias, item_bias = build_bias_priors(train_df, user_to_idx, item_to_idx, global_mean, args.bias_shrinkage)
+        model.initialize_biases(torch.tensor(user_bias), torch.tensor(item_bias))
+
+    if args.optimizer == "sgd":
+        optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
+    elif args.optimizer == "adam":
+        optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    else:
+        optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    scheduler = None
+    if 0.0 < args.lr_decay_factor < 1.0:
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer,
+            mode="min",
+            factor=args.lr_decay_factor,
+            patience=args.lr_patience,
+            min_lr=args.min_lr,
+        )
     criterion = torch.nn.MSELoss()
 
     best_val = float("inf")
@@ -205,8 +327,17 @@ def train(args: argparse.Namespace) -> SVDTrainingResult:
             labels = labels.to(device)
             optimizer.zero_grad()
             preds = model(users, items)
-            loss = criterion(preds, labels)
+            loss = criterion(preds, labels) + regularization_loss(
+                model,
+                users,
+                items,
+                args.embedding_reg,
+                args.bias_reg,
+                torch,
+            )
             loss.backward()
+            if args.max_grad_norm > 0:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
             optimizer.step()
             train_loss += float(loss.item()) * labels.numel()
             train_count += labels.numel()
@@ -219,6 +350,9 @@ def train(args: argparse.Namespace) -> SVDTrainingResult:
         train_rmse = float(np.sqrt(train_loss / max(train_count, 1)))
         if args.verbose:
             print(f"epoch={epoch:03d} train_rmse={train_rmse:.4f} val_rmse={val_rmse:.4f}")
+
+        if scheduler is not None:
+            scheduler.step(val_rmse)
 
         if val_rmse < best_val:
             best_val = val_rmse
@@ -282,6 +416,20 @@ def train(args: argparse.Namespace) -> SVDTrainingResult:
         print(f"saved artifact: {artifact_path}")
         print(f"saved metrics: {metrics_path}")
 
+    if args.recommender_artifact_dir:
+        dataset_name = args.dataset_name or Path(args.data_dir).resolve().name
+        recommender_artifact_dir = export_recommender_artifact(
+            model=model,
+            output_dir=args.recommender_artifact_dir,
+            idx_to_user=idx_to_user,
+            idx_to_item=idx_to_item,
+            dataset_name=dataset_name,
+            config=vars(args),
+            metrics=asdict(result),
+            positive_threshold=args.positive_threshold,
+        )
+        print(f"saved recommender artifact: {recommender_artifact_dir}")
+
     return result
 
 
@@ -289,11 +437,23 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train an independent biased Funk-SVD baseline.")
     parser.add_argument("--data-dir", default="data/sample")
     parser.add_argument("--artifact-path", default="artifacts/svd_baseline.pt")
-    parser.add_argument("--factors", type=int, default=64)
+    parser.add_argument("--recommender-artifact-dir", default="")
+    parser.add_argument("--dataset-name", default="")
+    parser.add_argument("--factors", type=int, default=24)
     parser.add_argument("--epochs", type=int, default=80)
-    parser.add_argument("--batch-size", type=int, default=1024)
+    parser.add_argument("--batch-size", type=int, default=2048)
     parser.add_argument("--lr", type=float, default=0.01)
-    parser.add_argument("--weight-decay", type=float, default=1e-5)
+    parser.add_argument("--optimizer", choices=["adamw", "adam", "sgd"], default="adamw")
+    parser.add_argument("--momentum", type=float, default=0.0)
+    parser.add_argument("--weight-decay", type=float, default=0.0)
+    parser.add_argument("--embedding-reg", type=float, default=0.02)
+    parser.add_argument("--bias-reg", type=float, default=0.005)
+    parser.add_argument("--bias-shrinkage", type=float, default=5.0)
+    parser.add_argument("--init-std", type=float, default=0.05)
+    parser.add_argument("--max-grad-norm", type=float, default=5.0)
+    parser.add_argument("--lr-decay-factor", type=float, default=0.5)
+    parser.add_argument("--lr-patience", type=int, default=2)
+    parser.add_argument("--min-lr", type=float, default=1e-5)
     parser.add_argument("--patience", type=int, default=8)
     parser.add_argument("--top-k", type=int, default=10)
     parser.add_argument("--positive-threshold", type=float, default=4.0)

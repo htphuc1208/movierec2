@@ -27,6 +27,14 @@ class ApiSmokeTest(unittest.TestCase):
         self.assertEqual(len(payload["recommendations"]), 3)
         self.assertIn("title", payload["recommendations"][0])
 
+    def test_model_info(self) -> None:
+        response = self.client.get("/model-info")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertIn("model_info", payload)
+        self.assertIn("model_source", payload["model_info"])
+        self.assertIn("weights", payload["model_info"])
+
 
 if __name__ == "__main__":
     unittest.main()

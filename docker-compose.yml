@@ -34,5 +34,17 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  trainer:
+    build:
+      context: .
+      dockerfile: Dockerfile.train
+    profiles: ["train"]
+    working_dir: /app
+    environment:
+      - MOVIEREC_DATA_DIR=/app/data/ml-latest-small
+    command: python scripts/benchmark_recbole.py --data-dir data/ml-latest-small --models Pop,ItemKNN,BPR,LightGCN --top-k 10 20
+    volumes:
+      - .:/app
+
 volumes:
   postgres_data:
