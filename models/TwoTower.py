@@ -74,7 +74,7 @@ class MetadataEncoder:
                 if self.backend == "sbert":
                     raise
 
-        self._tfidf = TfidfVectorizer(stop_words="english", ngram_range=(1, 2), min_df=1)
+        self._tfidf = TfidfVectorizer(stop_words="english", ngram_range=(1, 2), min_df=2, max_df=0.85)
         matrix = self._tfidf.fit_transform(texts).astype(np.float32)
         return matrix.toarray()
 

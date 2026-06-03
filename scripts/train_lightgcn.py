@@ -195,6 +195,7 @@ def export_recommender_artifact(
     metrics: dict[str, Any],
     positive_threshold: float,
     torch,
+    weights: dict[str, float] | None = None,
 ) -> Path:
     """Export final LightGCN embeddings into the lightweight API/UI format."""
 
@@ -217,6 +218,7 @@ def export_recommender_artifact(
         global_mean=np.asarray([0.0], dtype=np.float32),
     )
 
+    manifest_weights = weights or {"collaborative": 0.55, "content": 0.35, "popularity": 0.10}
     manifest = {
         "artifact_version": 1,
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -224,7 +226,7 @@ def export_recommender_artifact(
         "model_name": "lightgcn-pytorch",
         "model_source": "pytorch_lightgcn",
         "positive_threshold": positive_threshold,
-        "weights": {"collaborative": 0.55, "content": 0.35, "popularity": 0.10},
+        "weights": manifest_weights,
         "collaborative": {
             "mode": "embedding",
             "engine": "torch-native",
@@ -264,6 +266,15 @@ def train(args: argparse.Namespace) -> LightGCNTrainingResult:
         i = item_to_idx[int(row.movieId)]
         train_pos_graph.setdefault(u, set()).add(i)
     negative_candidates = build_negative_candidates(train_pos_graph, num_items)
+    # Build separate validation negative candidates excluding both train and val positives
+    val_pos_graph = {u: set(items) for u, items in train_pos_graph.items()}
+    val_pos_df = val_df[(val_df["userId"].astype(int).isin(user_to_idx)) & (val_df["movieId"].astype(int).isin(item_to_idx))]
+    val_pos_df = val_pos_df[val_pos_df["rating"] >= args.positive_threshold]
+    for row in val_pos_df.itertuples():
+        u = user_to_idx[int(row.userId)]
+        i = item_to_idx[int(row.movieId)]
+        val_pos_graph.setdefault(u, set()).add(i)
+    val_negative_candidates = build_negative_candidates(val_pos_graph, num_items)
 
     u_indices = [user_to_idx[int(uid)] for uid in pos_df_filtered["userId"]]
     i_indices = [item_to_idx[int(mid)] for mid in pos_df_filtered["movieId"]]
@@ -339,7 +350,7 @@ def train(args: argparse.Namespace) -> LightGCNTrainingResult:
                 for batch_users, batch_pos_items in val_loader:
                     batch_users = batch_users.to(device)
                     batch_pos_items = batch_pos_items.to(device)
-                    batch_neg_items = sample_negative_batch(batch_users, negative_candidates, num_items, torch)
+                    batch_neg_items = sample_negative_batch(batch_users, val_negative_candidates, num_items, torch)
 
                     pos_scores = torch.sum(user_embeds[batch_users] * item_embeds[batch_pos_items], dim=1)
                     neg_scores = torch.sum(user_embeds[batch_users] * item_embeds[batch_neg_items], dim=1)
@@ -438,6 +449,7 @@ def train(args: argparse.Namespace) -> LightGCNTrainingResult:
             metrics=asdict(result),
             positive_threshold=args.positive_threshold,
             torch=torch,
+            weights={"collaborative": getattr(args, 'cf_weight', 0.55), "content": getattr(args, 'content_weight', 0.35), "popularity": getattr(args, 'popularity_weight', 0.10)},
         )
         print(f"saved recommender artifact: {recommender_artifact_dir}")
 
@@ -463,6 +475,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--positive-threshold", type=float, default=4.0)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", default="")
+    parser.add_argument("--cf-weight", type=float, default=0.55)
+    parser.add_argument("--content-weight", type=float, default=0.35)
+    parser.add_argument("--popularity-weight", type=float, default=0.10)
     parser.add_argument("--verbose", action="store_true")
     return parser.parse_args()
 

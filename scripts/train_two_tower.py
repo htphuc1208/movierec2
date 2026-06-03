@@ -235,6 +235,7 @@ def export_recommender_artifact(
     positive_threshold: float,
     device,
     torch,
+    weights: dict[str, float] | None = None,
 ) -> Path:
     path = Path(output_dir)
     path.mkdir(parents=True, exist_ok=True)
@@ -253,6 +254,7 @@ def export_recommender_artifact(
         item_embeddings=item_embeddings,
         global_mean=np.asarray([0.0], dtype=np.float32),
     )
+    manifest_weights = weights or {"collaborative": 0.55, "content": 0.35, "popularity": 0.10}
     manifest = {
         "artifact_version": 1,
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -260,7 +262,7 @@ def export_recommender_artifact(
         "model_name": "two-tower-tfidf",
         "model_source": "pytorch_two_tower",
         "positive_threshold": positive_threshold,
-        "weights": {"collaborative": 0.55, "content": 0.35, "popularity": 0.10},
+        "weights": manifest_weights,
         "collaborative": {"mode": "embedding", "engine": "torch-native", "factors": int(user_embeddings.shape[1])},
         "content": {"backend": "tfidf"},
         "files": {"collaborative": "collaborative.npz"},
@@ -305,6 +307,13 @@ def train(args: argparse.Namespace) -> TwoTowerTrainingResult:
     val_dataset = PairDataset(val_pairs, torch)
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
     negative_candidates = build_negative_candidates(train_pairs, len(item_to_idx))
+    # Build separate validation negative candidates excluding both train and val positives
+    val_positive_set: dict[int, set[int]] = {}
+    for user_idx, item_idx in train_pairs:
+        val_positive_set.setdefault(user_idx, set()).add(item_idx)
+    for user_idx, item_idx in val_pairs:
+        val_positive_set.setdefault(user_idx, set()).add(item_idx)
+    val_negative_candidates = {user_idx: np.setdiff1d(np.arange(len(item_to_idx), dtype=np.int64), np.asarray(sorted(items), dtype=np.int64)) for user_idx, items in val_positive_set.items()}
 
     user_tensor = torch.tensor(user_features, dtype=torch.float32, device=device)
     item_tensor = torch.tensor(item_vectors, dtype=torch.float32, device=device)
@@ -342,7 +351,7 @@ def train(args: argparse.Namespace) -> TwoTowerTrainingResult:
                 for users, pos_items in val_loader:
                     users = users.to(device)
                     pos_items = pos_items.to(device)
-                    neg_items = sample_negative_batch(users, negative_candidates, len(item_to_idx), torch)
+                    neg_items = sample_negative_batch(users, val_negative_candidates, len(item_to_idx), torch)
                     user_embeddings = torch.nn.functional.normalize(model.user_tower(user_tensor[users]), p=2, dim=1)
                     pos_embeddings = torch.nn.functional.normalize(model.item_tower(item_tensor[pos_items]), p=2, dim=1)
                     neg_embeddings = torch.nn.functional.normalize(model.item_tower(item_tensor[neg_items]), p=2, dim=1)
@@ -413,6 +422,7 @@ def train(args: argparse.Namespace) -> TwoTowerTrainingResult:
             args.positive_threshold,
             device,
             torch,
+            weights={"collaborative": getattr(args, 'cf_weight', 0.55), "content": getattr(args, 'content_weight', 0.35), "popularity": getattr(args, 'popularity_weight', 0.10)},
         )
         print(f"saved recommender artifact: {output}")
     return result
@@ -443,6 +453,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--positive-threshold", type=float, default=4.0)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", default="")
+    parser.add_argument("--cf-weight", type=float, default=0.55)
+    parser.add_argument("--content-weight", type=float, default=0.35)
+    parser.add_argument("--popularity-weight", type=float, default=0.10)
     parser.add_argument("--verbose", action="store_true")
     return parser.parse_args()
 

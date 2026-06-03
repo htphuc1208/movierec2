@@ -232,6 +232,7 @@ def export_recommender_artifact(
     config: dict[str, Any],
     metrics: dict[str, Any],
     positive_threshold: float,
+    weights: dict[str, float] | None = None,
 ) -> Path:
     """Export PyTorch SVD weights into the lightweight API/UI artifact format."""
 
@@ -257,6 +258,7 @@ def export_recommender_artifact(
         global_mean=np.asarray([global_mean], dtype=np.float32),
     )
 
+    manifest_weights = weights or {"collaborative": 0.55, "content": 0.35, "popularity": 0.10}
     manifest = {
         "artifact_version": 1,
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -264,7 +266,7 @@ def export_recommender_artifact(
         "model_name": "svd-pytorch",
         "model_source": "pytorch_svd",
         "positive_threshold": positive_threshold,
-        "weights": {"collaborative": 0.55, "content": 0.35, "popularity": 0.10},
+        "weights": manifest_weights,
         "collaborative": {
             "mode": "funk_svd",
             "engine": "torch",
@@ -481,6 +483,7 @@ def train(args: argparse.Namespace) -> SVDTrainingResult:
             config=vars(args),
             metrics=asdict(result),
             positive_threshold=args.positive_threshold,
+            weights={"collaborative": getattr(args, 'cf_weight', 0.55), "content": getattr(args, 'content_weight', 0.35), "popularity": getattr(args, 'popularity_weight', 0.10)},
         )
         print(f"saved recommender artifact: {recommender_artifact_dir}")
 
@@ -513,6 +516,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--positive-threshold", type=float, default=4.0)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", default="")
+    parser.add_argument("--cf-weight", type=float, default=0.55)
+    parser.add_argument("--content-weight", type=float, default=0.35)
+    parser.add_argument("--popularity-weight", type=float, default=0.10)
     parser.add_argument("--verbose", action="store_true")
     return parser.parse_args()
 

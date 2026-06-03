@@ -77,7 +77,16 @@ def evaluate_recommendations(
     ndcg_values: list[float] = []
     mrr_values: list[float] = []
 
-    for user_id, relevant in relevant_by_user(holdout, positive_threshold).items():
+    relevant_map = relevant_by_user(holdout, positive_threshold)
+    all_holdout_users = sorted(set(int(uid) for uid in holdout["userId"].unique()))
+    for user_id in all_holdout_users:
+        relevant = relevant_map.get(user_id, set())
+        if not relevant:
+            precision_values.append(0.0)
+            recall_values.append(0.0)
+            ndcg_values.append(0.0)
+            mrr_values.append(0.0)
+            continue
         recommended = list(recommendations_by_user.get(int(user_id), []))
         precision_values.append(precision_at_k(recommended, relevant, top_k))
         recall_values.append(recall_at_k(recommended, relevant, top_k))

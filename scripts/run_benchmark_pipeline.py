@@ -273,6 +273,9 @@ def default_svd_args(args: argparse.Namespace, data_dir: Path, artifact_path: Pa
         seed=args.seed,
         device=args.device,
         verbose=args.verbose,
+        cf_weight=0.55,
+        content_weight=0.35,
+        popularity_weight=0.10,
     )
 
 
@@ -297,6 +300,9 @@ def default_lightgcn_args(args: argparse.Namespace, data_dir: Path, artifact_pat
         seed=args.seed,
         device=args.device,
         verbose=args.verbose,
+        cf_weight=0.55,
+        content_weight=0.35,
+        popularity_weight=0.10,
     )
 
 
@@ -323,6 +329,9 @@ def default_two_tower_args(args: argparse.Namespace, data_dir: Path, artifact_pa
         seed=args.seed,
         device=args.device,
         verbose=args.verbose,
+        cf_weight=0.55,
+        content_weight=0.35,
+        popularity_weight=0.10,
     )
 
 

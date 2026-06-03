@@ -8,9 +8,9 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+from scipy.stats import rankdata
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-from sklearn.preprocessing import MinMaxScaler
 
 
 @dataclass
@@ -39,7 +39,7 @@ class HybridMovieRecommender:
         popularity_weight: float = 0.10,
         min_rating: float = 4.0,
         collaborative_factors: int = 24,
-        collaborative_epochs: int = 2,
+        collaborative_epochs: int = 30,
         collaborative_lr: float = 0.01,
         collaborative_reg: float = 0.02,
         collaborative_batch_size: int = 2048,
@@ -521,7 +521,7 @@ class HybridMovieRecommender:
                 patience_left = max(1, self.collaborative_patience)
             else:
                 patience_left -= 1
-                if val_users is not None and patience_left <= 0:
+                if patience_left <= 0:
                     break
 
         if best_state is not None:
@@ -615,12 +615,12 @@ class HybridMovieRecommender:
                 np.add.at(
                     self._user_bias,
                     users,
-                    -self.collaborative_lr * (errors + self.collaborative_reg * user_bias),
+                    -self.collaborative_lr * (errors + self.collaborative_bias_reg * user_bias),
                 )
                 np.add.at(
                     self._item_bias,
                     items,
-                    -self.collaborative_lr * (errors + self.collaborative_reg * item_bias),
+                    -self.collaborative_lr * (errors + self.collaborative_bias_reg * item_bias),
                 )
         self._collaborative_engine_used = "numpy"
 
@@ -645,8 +645,13 @@ class HybridMovieRecommender:
                 " ".join(tag_map.get(movie_id, [])),
             ]
             text.append(" ".join(parts))
-        self._vectorizer = TfidfVectorizer(stop_words="english", ngram_range=(1, 2), min_df=1)
-        self._content_matrix = self._vectorizer.fit_transform(text)
+        self._vectorizer = TfidfVectorizer(stop_words="english", ngram_range=(1, 2), min_df=2, max_df=0.85)
+        try:
+            self._content_matrix = self._vectorizer.fit_transform(text)
+        except ValueError:
+            # Fallback for very small catalogs where min_df=2 prunes all terms
+            self._vectorizer = TfidfVectorizer(stop_words="english", ngram_range=(1, 2), min_df=1)
+            self._content_matrix = self._vectorizer.fit_transform(text)
 
     def _build_popularity(self) -> None:
         grouped = self.ratings.groupby("movieId")["rating"].agg(["mean", "count"])
@@ -672,7 +677,7 @@ class HybridMovieRecommender:
                 + self._user_factors[user_idx] @ self._item_factors.T
             )
             return scores.astype(np.float32)
-        return self._popularity_scores()
+        return self._global_mean_collaborative_scores()
 
     def _collaborative_rating(self, user_id: int, movie_id: int) -> float:
         item_idx = self.movie_index.get(movie_id)
@@ -705,7 +710,7 @@ class HybridMovieRecommender:
 
         profile_indices = [self.movie_index[movie_id] for movie_id in profile_ids if movie_id in self.movie_index]
         if not profile_indices:
-            return self._popularity_scores()
+            return np.zeros(len(self.movie_ids), dtype=np.float32)
 
         profile_vector = np.asarray(self._content_matrix[profile_indices].mean(axis=0)).reshape(1, -1)
         scores = cosine_similarity(profile_vector, self._content_matrix).ravel()
@@ -714,6 +719,23 @@ class HybridMovieRecommender:
     def _popularity_scores(self) -> np.ndarray:
         self._ensure_fit()
         return self._popularity.astype(np.float32)
+
+    def _global_mean_collaborative_scores(self) -> np.ndarray:
+        """Fallback collaborative scores for unknown users using global-mean profile."""
+        self._ensure_fit()
+        if self._collaborative_mode == "embedding":
+            mean_user = np.mean(self._user_factors, axis=0)
+            scores = mean_user @ self._item_factors.T
+            return scores.astype(np.float32)
+        mean_user_bias = float(np.mean(self._user_bias)) if self._user_bias is not None else 0.0
+        mean_user_factors = np.mean(self._user_factors, axis=0)
+        scores = (
+            self._global_mean
+            + mean_user_bias
+            + self._item_bias
+            + mean_user_factors @ self._item_factors.T
+        )
+        return scores.astype(np.float32)
 
     def _reason_for(
         self,
@@ -797,11 +819,13 @@ class HybridMovieRecommender:
         finite = np.isfinite(scores)
         if not finite.any():
             return np.zeros_like(scores, dtype=np.float32)
-        safe = scores.copy().astype(np.float32)
-        safe[~finite] = np.nanmin(safe[finite])
+        safe = scores.copy().astype(np.float64)
+        safe[~finite] = np.nanmin(safe[finite]) - 1.0
         if np.nanmax(safe) == np.nanmin(safe):
             return np.zeros_like(safe, dtype=np.float32)
-        return MinMaxScaler().fit_transform(safe.reshape(-1, 1)).ravel().astype(np.float32)
+        ranked = rankdata(safe, method="average")
+        scaled = (ranked - 1.0) / max(len(ranked) - 1.0, 1.0)
+        return scaled.astype(np.float32)
 
     @staticmethod
     def _rating_like(score: float) -> float:

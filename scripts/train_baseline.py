@@ -16,40 +16,6 @@ from evaluation import mrr_at_k, ndcg_at_k, precision_at_k, recall_at_k, rmse
 from models import HybridMovieRecommender
 
 
-def evaluate_top_k_segment(
-    model: HybridMovieRecommender,
-    holdout,
-    top_k: int,
-) -> dict[str, float]:
-    relevant_by_user: dict[int, set[int]] = defaultdict(set)
-    for row in holdout.itertuples():
-        if float(row.rating) >= model.min_rating:
-            relevant_by_user[int(row.userId)].add(int(row.movieId))
-
-    precision_values = []
-    recall_values = []
-    ndcg_values = []
-    mrr_values = []
-
-    for user_id, relevant in relevant_by_user.items():
-        recs = model.recommend(user_id=user_id, top_k=top_k, exclude_seen=True)
-        recommended_ids = [int(rec["movie_id"]) for rec in recs]
-        precision_values.append(precision_at_k(recommended_ids, relevant, top_k))
-        recall_values.append(recall_at_k(recommended_ids, relevant, top_k))
-        ndcg_values.append(ndcg_at_k(recommended_ids, relevant, top_k))
-        mrr_values.append(mrr_at_k(recommended_ids, relevant, top_k))
-
-    def avg(values: list[float]) -> float:
-        return sum(values) / len(values) if values else 0.0
-
-    return {
-        f"precision@{top_k}": avg(precision_values),
-        f"recall@{top_k}": avg(recall_values),
-        f"ndcg@{top_k}": avg(ndcg_values),
-        f"mrr@{top_k}": avg(mrr_values),
-    }
-
-
 def evaluate_top_k_segments(
     model: HybridMovieRecommender,
     segments: dict[str, object],
