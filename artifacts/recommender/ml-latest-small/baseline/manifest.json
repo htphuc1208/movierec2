@@ -1,0 +1,44 @@
+{
+  "artifact_version": 1,
+  "created_at": "2026-06-03T04:28:45.994896+00:00",
+  "dataset": "ml-latest-small",
+  "model_name": "hybrid-pytorch-svd-tfidf",
+  "model_source": "runtime_fit",
+  "positive_threshold": 4.0,
+  "weights": {
+    "collaborative": 0.55,
+    "content": 0.35,
+    "popularity": 0.1
+  },
+  "collaborative": {
+    "mode": "funk_svd",
+    "engine": "torch",
+    "factors": 24
+  },
+  "content": {
+    "backend": "tfidf"
+  },
+  "files": {
+    "collaborative": "collaborative.npz"
+  },
+  "metrics": {
+    "test": {
+      "precision@10": 0.02695035460992908,
+      "recall@10": 0.04752550885880182,
+      "ndcg@10": 0.044049261405181075,
+      "mrr@10": 0.08132950579759089,
+      "warm_precision@10": 0.02704626334519573,
+      "warm_recall@10": 0.04850555100089199,
+      "warm_ndcg@10": 0.044488917429862926,
+      "warm_mrr@10": 0.08161893464384568,
+      "cold_precision@10": 0.0,
+      "cold_recall@10": 0.0,
+      "cold_ndcg@10": 0.0,
+      "cold_mrr@10": 0.0,
+      "rating_rmse": 0.8999696373939514,
+      "rmse": 0.8999696373939514,
+      "warm_test_interactions": 9146.0,
+      "cold_test_interactions": 947.0
+    }
+  }
+}

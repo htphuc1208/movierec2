@@ -1,0 +1,148 @@
+{
+  "dataset": "letterboxd-full",
+  "cf_model": "TwoTower",
+  "content_backend": "tfidf",
+  "weights": {
+    "collaborative": 0.5,
+    "content": 0.25,
+    "popularity": 0.25
+  },
+  "validation": {
+    "precision@10": 0.025569620253164557,
+    "recall@10": 0.08762744990593092,
+    "ndcg@10": 0.06849956000648089,
+    "mrr@10": 0.08875226039783002
+  },
+  "validation_segments": {
+    "warm_interactions": 2968,
+    "cold_interactions": 434
+  },
+  "test": {
+    "precision@10": 0.007126436781609196,
+    "recall@10": 0.028071519795657723,
+    "ndcg@10": 0.018458293779098543,
+    "mrr@10": 0.02121510673234811,
+    "rmse": 1.6981083154678345
+  },
+  "test_segments": {
+    "warm_interactions": 2657,
+    "cold_interactions": 745,
+    "warm": {
+      "precision@10": 0.007711442786069652,
+      "recall@10": 0.03290097133380716,
+      "ndcg@10": 0.021403153078329518,
+      "mrr@10": 0.022956645344705044
+    },
+    "cold": {
+      "precision@10": 0.0,
+      "recall@10": 0.0,
+      "ndcg@10": 0.0,
+      "mrr@10": 0.0
+    }
+  },
+  "model_info": {
+    "model_source": "artifact",
+    "model_name": "two-tower-tfidf",
+    "dataset": "letterboxd-full",
+    "artifact_path": "artifacts/recommender/letterboxd-full/two-tower",
+    "weights": {
+      "collaborative": 0.5,
+      "content": 0.25,
+      "popularity": 0.25
+    },
+    "positive_threshold": 4.0,
+    "collaborative_mode": "embedding",
+    "collaborative_engine": "torch-native",
+    "metrics": {
+      "test": {
+        "train_loss": 0.4865043635169665,
+        "val_loss": 0.5199780166149139,
+        "precision_at_k": 0.002736318407960199,
+        "recall_at_k": 0.006612769485903814,
+        "ndcg_at_k": 0.0043288497801612195,
+        "mrr_at_k": 0.007223801626786701,
+        "all_precision_at_k": 0.0025287356321839084,
+        "all_recall_at_k": 0.00553639846743295,
+        "all_ndcg_at_k": 0.003779901207639854,
+        "all_mrr_at_k": 0.006675789089582193,
+        "cold_precision_at_k": 0.0,
+        "cold_recall_at_k": 0.0,
+        "cold_ndcg_at_k": 0.0,
+        "cold_mrr_at_k": 0.0,
+        "train_item_count": 5773,
+        "catalog_item_count": 6720,
+        "cold_test_interactions": 745,
+        "warm_test_interactions": 2657,
+        "cold_positive_interactions": 333,
+        "best_epoch": 14
+      }
+    },
+    "user_count": 551,
+    "movie_count": 6720
+  },
+  "artifact_dir": "artifacts/recommender/letterboxd-full/hybrid-twotower-tfidf",
+  "manifest": {
+    "artifact_version": 1,
+    "created_at": "2026-06-03T04:49:59.969454+00:00",
+    "dataset": "letterboxd-full",
+    "model_name": "hybrid-twotower-tfidf",
+    "model_source": "artifact",
+    "positive_threshold": 4.0,
+    "weights": {
+      "collaborative": 0.5,
+      "content": 0.25,
+      "popularity": 0.25
+    },
+    "collaborative": {
+      "mode": "embedding",
+      "engine": "torch-native",
+      "factors": 64
+    },
+    "content": {
+      "backend": "tfidf"
+    },
+    "files": {
+      "collaborative": "collaborative.npz"
+    },
+    "metrics": {
+      "validation": {
+        "precision@10": 0.025569620253164557,
+        "recall@10": 0.08762744990593092,
+        "ndcg@10": 0.06849956000648089,
+        "mrr@10": 0.08875226039783002
+      },
+      "test": {
+        "precision@10": 0.007126436781609196,
+        "recall@10": 0.028071519795657723,
+        "ndcg@10": 0.018458293779098543,
+        "mrr@10": 0.02121510673234811,
+        "rmse": 1.6981083154678345
+      },
+      "test_segments": {
+        "warm_interactions": 2657,
+        "cold_interactions": 745,
+        "warm": {
+          "precision@10": 0.007711442786069652,
+          "recall@10": 0.03290097133380716,
+          "ndcg@10": 0.021403153078329518,
+          "mrr@10": 0.022956645344705044
+        },
+        "cold": {
+          "precision@10": 0.0,
+          "recall@10": 0.0,
+          "ndcg@10": 0.0,
+          "mrr@10": 0.0
+        }
+      }
+    },
+    "tuning": {
+      "primary_metric": "ndcg@10",
+      "tie_breakers": [
+        "mrr@10",
+        "recall@10",
+        "precision@10"
+      ],
+      "candidate_count": 123
+    }
+  }
+}

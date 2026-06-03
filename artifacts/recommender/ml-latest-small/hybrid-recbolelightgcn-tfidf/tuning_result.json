@@ -1,0 +1,134 @@
+{
+  "dataset": "ml-latest-small",
+  "cf_model": "RecBoleLightGCN",
+  "content_backend": "tfidf",
+  "weights": {
+    "collaborative": 0.37499999999999994,
+    "content": 0.5625,
+    "popularity": 0.0625
+  },
+  "validation": {
+    "precision@10": 0.0448581560283688,
+    "recall@10": 0.0836033482268906,
+    "ndcg@10": 0.07674448912654248,
+    "mrr@10": 0.14146051446583363
+  },
+  "validation_segments": {
+    "warm_interactions": 9344,
+    "cold_interactions": 749
+  },
+  "test": {
+    "precision@10": 0.03351063829787235,
+    "recall@10": 0.05756631505036966,
+    "ndcg@10": 0.051644008618287815,
+    "mrr@10": 0.09066475289879544,
+    "rmse": 1.796669363975525
+  },
+  "test_segments": {
+    "warm_interactions": 9146,
+    "cold_interactions": 947,
+    "warm": {
+      "precision@10": 0.03362989323843417,
+      "recall@10": 0.058430172607284295,
+      "ndcg@10": 0.05205772909194886,
+      "mrr@10": 0.09098740326498334
+    },
+    "cold": {
+      "precision@10": 0.0,
+      "recall@10": 0.0,
+      "ndcg@10": 0.0,
+      "mrr@10": 0.0
+    }
+  },
+  "model_info": {
+    "model_source": "artifact",
+    "model_name": "recbole-LightGCN",
+    "dataset": "ml-latest-small",
+    "artifact_path": "artifacts/recommender/ml-latest-small/recbole-lightgcn",
+    "weights": {
+      "collaborative": 0.37499999999999994,
+      "content": 0.5625,
+      "popularity": 0.0625
+    },
+    "positive_threshold": 4.0,
+    "collaborative_mode": "embedding",
+    "collaborative_engine": "recbole",
+    "metrics": {
+      "precision@10": 0.0228,
+      "precision@20": 0.02,
+      "recall@10": 0.0435,
+      "recall@20": 0.075,
+      "ndcg@10": 0.0408,
+      "ndcg@20": 0.0507,
+      "mrr@10": 0.0786,
+      "mrr@20": 0.0844
+    },
+    "user_count": 609,
+    "movie_count": 9742
+  },
+  "artifact_dir": "artifacts/recommender/ml-latest-small/hybrid-recbolelightgcn-tfidf",
+  "manifest": {
+    "artifact_version": 1,
+    "created_at": "2026-06-03T04:49:10.822069+00:00",
+    "dataset": "ml-latest-small",
+    "model_name": "hybrid-recbolelightgcn-tfidf",
+    "model_source": "artifact",
+    "positive_threshold": 4.0,
+    "weights": {
+      "collaborative": 0.37499999999999994,
+      "content": 0.5625,
+      "popularity": 0.0625
+    },
+    "collaborative": {
+      "mode": "embedding",
+      "engine": "recbole",
+      "factors": 64
+    },
+    "content": {
+      "backend": "tfidf"
+    },
+    "files": {
+      "collaborative": "collaborative.npz"
+    },
+    "metrics": {
+      "validation": {
+        "precision@10": 0.0448581560283688,
+        "recall@10": 0.0836033482268906,
+        "ndcg@10": 0.07674448912654248,
+        "mrr@10": 0.14146051446583363
+      },
+      "test": {
+        "precision@10": 0.03351063829787235,
+        "recall@10": 0.05756631505036966,
+        "ndcg@10": 0.051644008618287815,
+        "mrr@10": 0.09066475289879544,
+        "rmse": 1.796669363975525
+      },
+      "test_segments": {
+        "warm_interactions": 9146,
+        "cold_interactions": 947,
+        "warm": {
+          "precision@10": 0.03362989323843417,
+          "recall@10": 0.058430172607284295,
+          "ndcg@10": 0.05205772909194886,
+          "mrr@10": 0.09098740326498334
+        },
+        "cold": {
+          "precision@10": 0.0,
+          "recall@10": 0.0,
+          "ndcg@10": 0.0,
+          "mrr@10": 0.0
+        }
+      }
+    },
+    "tuning": {
+      "primary_metric": "ndcg@10",
+      "tie_breakers": [
+        "mrr@10",
+        "recall@10",
+        "precision@10"
+      ],
+      "candidate_count": 123
+    }
+  }
+}

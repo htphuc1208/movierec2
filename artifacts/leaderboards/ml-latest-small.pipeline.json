@@ -1,0 +1,13 @@
+{
+  "dataset": "ml-latest-small",
+  "data_dir": "data/ml-latest-small",
+  "protocol": "per_user_temporal_80_10_10_pos4_full",
+  "profile": "full",
+  "completed": [
+    "recbole_atomic_split",
+    "recbole_report",
+    "tune"
+  ],
+  "skipped": {},
+  "leaderboard": "artifacts/leaderboards/ml-latest-small.csv"
+}

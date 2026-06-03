@@ -1,0 +1,34 @@
+{
+  "artifact_version": 1,
+  "created_at": "2026-06-03T04:34:04.406019+00:00",
+  "dataset": "letterboxd-full",
+  "model_name": "recbole-LightGCN",
+  "model_source": "recbole",
+  "positive_threshold": 4.0,
+  "weights": {
+    "collaborative": 0.55,
+    "content": 0.35,
+    "popularity": 0.1
+  },
+  "collaborative": {
+    "mode": "embedding",
+    "engine": "recbole",
+    "checkpoint": "artifacts/recbole/checkpoints/letterboxd-full/lightgcn/LightGCN-Jun-03-2026_04-33-58.pth"
+  },
+  "content": {
+    "backend": "tfidf"
+  },
+  "files": {
+    "collaborative": "collaborative.npz"
+  },
+  "metrics": {
+    "precision@10": 0.0108,
+    "precision@20": 0.0087,
+    "recall@10": 0.031,
+    "recall@20": 0.0467,
+    "ndcg@10": 0.0221,
+    "ndcg@20": 0.0283,
+    "mrr@10": 0.0329,
+    "mrr@20": 0.0358
+  }
+}

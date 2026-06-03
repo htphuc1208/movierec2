@@ -143,6 +143,29 @@ Then run:
 python3 scripts/train_baseline.py --data-dir data/ml-latest-small
 ```
 
+## Benchmark Pipeline And Leaderboards
+
+The shared benchmark protocol is `per_user_temporal_80_10_10_pos4_full`:
+per-user temporal split, `rating >= 4.0` positives, `topk=[10,20]`, and primary ranking metric `NDCG@10`.
+Leaderboard files are written to `artifacts/leaderboards/`.
+
+Current best rows:
+
+| dataset | best model | ndcg@10 | mrr@10 | artifact |
+| --- | --- | ---: | ---: | --- |
+| ml-latest-small | hybrid-bpr-tfidf | 0.0579 | 0.1007 | `artifacts/recommender/ml-latest-small/latest` |
+| letterboxd-full | hybrid-recbolelightgcn-tfidf | 0.0259 | 0.0383 | `artifacts/recommender/letterboxd-full/latest` |
+
+Run the full local pipeline:
+
+```bash
+python3 scripts/run_benchmark_pipeline.py --dataset ml-latest-small --data-dir data/ml-latest-small --profile full
+python3 scripts/prepare_letterboxd.py --raw-dir crawl/data/raw --output-dir data/letterboxd-full --source full
+python3 scripts/run_benchmark_pipeline.py --dataset letterboxd-full --data-dir data/letterboxd-full --profile full
+```
+
+The runner trains/evaluates the lightweight hybrid baseline, PyTorch SVD, native LightGCN, TF-IDF TwoTower, tunes hybrid weights, writes dataset-scoped artifacts under `artifacts/recommender/{dataset}/`, and syncs `artifacts/recommender/latest` to the MovieLens best artifact by default.
+
 ## RecBole Benchmark And Hybrid Tuning
 
 RecBole is isolated in a Python 3.10 trainer image because some pinned RecBole dependencies do not install cleanly in newer local Python versions.
@@ -150,10 +173,13 @@ RecBole is isolated in a Python 3.10 trainer image because some pinned RecBole d
 ```bash
 docker compose --profile train build trainer
 docker compose --profile train run --rm trainer python scripts/benchmark_recbole.py --data-dir data/ml-latest-small --models Pop,ItemKNN,BPR,LightGCN --top-k 10 20
-docker compose --profile train run --rm trainer python scripts/tune_hybrid.py --data-dir data/ml-latest-small --cf-model LightGCN --content-backend tfidf --output-dir artifacts/recommender/latest
+docker compose --profile train run --rm trainer python scripts/benchmark_recbole.py --data-dir data/letterboxd-full --dataset-name letterboxd-full --models Pop,ItemKNN,BPR,LightGCN --top-k 10 20
+python3 scripts/run_benchmark_pipeline.py --dataset ml-latest-small --data-dir data/ml-latest-small --profile full --models recbole,tune --skip-audit
+python3 scripts/run_benchmark_pipeline.py --dataset letterboxd-full --data-dir data/letterboxd-full --profile full --models recbole,tune --skip-audit
 ```
 
-Benchmark reports are written to `artifacts/benchmarks/`. The tuned hybrid artifact is written to `artifacts/recommender/latest/` and can be loaded by setting `MOVIEREC_ARTIFACT_DIR`.
+RecBole reports are written to `artifacts/benchmarks/`. The script writes pre-split atomic files with `benchmark_filename=["train","valid","test"]` so RecBole uses the same temporal split as the local trainers.
+Only BPR and LightGCN export API-loadable collaborative embeddings; Pop and ItemKNN appear in the leaderboard as benchmark rows only.
 
 Native PyTorch LightGCN training is also available:
 
@@ -190,12 +216,15 @@ For the current data policy, warm/cold split handling, TMDb keywords, Tag Genome
 
 ## Letterboxd Crawl Data
 
-The `crawl/` folder contains an experimental Letterboxd crawler and CSV outputs merged from the remote crawl branch. This data is crawler-specific and is not a drop-in MovieLens replacement yet.
+The `crawl/` folder contains an experimental Letterboxd crawler and CSV outputs merged from the remote crawl branch. Convert it before benchmarking:
 
 ```bash
 python3 crawl/crawl_letterboxd_movie_centric.py --resume
 python3 crawl/enrich_tmdb.py --api-key "$TMDB_API_KEY" --data-dir crawl/data/raw
+python3 scripts/prepare_letterboxd.py --raw-dir crawl/data/raw --output-dir data/letterboxd-full --source full
 ```
+
+The prepared `letterboxd-full` dataset currently contains 6720 canonical movies, 33946 ratings, and 551 users. TMDb enrichment is skipped when `TMDB_API_KEY` is absent; placeholder metadata is still written so audits and content models can run.
 
 ## Docker
 

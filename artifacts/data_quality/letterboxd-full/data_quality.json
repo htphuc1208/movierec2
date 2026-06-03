@@ -1,0 +1,362 @@
+{
+  "generated_at": "2026-06-03T04:31:48.336144+00:00",
+  "data_dir": "data/letterboxd-full",
+  "shapes": {
+    "movies": [
+      6720,
+      4
+    ],
+    "ratings": [
+      33946,
+      4
+    ],
+    "tags": [
+      0,
+      4
+    ],
+    "links": [
+      6720,
+      3
+    ],
+    "enriched_movies": [
+      6720,
+      22
+    ],
+    "loaded_movies": [
+      6720,
+      27
+    ],
+    "loaded_ratings": [
+      33946,
+      4
+    ]
+  },
+  "ids": {
+    "users": 551,
+    "movies": 6720,
+    "rated_movies": 6720,
+    "sparsity_pct": 99.0832
+  },
+  "duplicates": {
+    "movies_movieId": 0,
+    "ratings_userId_movieId": 0,
+    "links_movieId": 0,
+    "enriched_movieId": 0,
+    "tags_full_rows": 0
+  },
+  "orphans": {
+    "rating_movieIds_not_in_movies": 0,
+    "tag_movieIds_not_in_movies": 0,
+    "link_movieIds_not_in_movies": 0,
+    "enriched_movieIds_not_in_movies": 0,
+    "movies_without_ratings": 0,
+    "movies_without_links": 0,
+    "movies_without_enriched": 0
+  },
+  "ratings": {
+    "min": 0.5,
+    "max": 5.0,
+    "mean": 3.4643,
+    "median": 3.5,
+    "distribution": {
+      "0.5": 163,
+      "1.0": 410,
+      "1.5": 300,
+      "2.0": 1127,
+      "2.5": 10026,
+      "3.0": 3950,
+      "3.5": 3368,
+      "4.0": 6297,
+      "4.5": 2024,
+      "5.0": 6281
+    },
+    "positive_threshold": 4.0,
+    "positive_count": 14602,
+    "positive_pct": 43.0154,
+    "user_interactions_min": 1,
+    "user_interactions_median": 69.0,
+    "user_interactions_mean": 61.608,
+    "user_interactions_max": 184,
+    "item_interactions_min": 1,
+    "item_interactions_median": 1.0,
+    "item_interactions_mean": 5.0515,
+    "item_interactions_max": 195,
+    "items_with_lt_5_ratings": 5442,
+    "items_with_lt_10_ratings": 6025
+  },
+  "split": {
+    "train_size": 27142,
+    "val_size": 3402,
+    "test_size": 3402,
+    "train_pct": 79.9564,
+    "val_pct": 10.0218,
+    "test_pct": 10.0218,
+    "train_users": 551,
+    "val_users": 547,
+    "test_users": 547,
+    "test_users_not_in_train": 0,
+    "val_movies_not_in_train": 389,
+    "test_movies_not_in_train": 613,
+    "val_warm_interactions": 2968,
+    "val_cold_interactions": 434,
+    "test_warm_interactions": 2657,
+    "test_cold_interactions": 745,
+    "test_cold_positive_interactions": 333
+  },
+  "content_coverage": {
+    "overview": {
+      "mode": "nonempty",
+      "covered": 0,
+      "total": 6720,
+      "coverage_pct": 0.0
+    },
+    "tagline": {
+      "mode": "nonempty",
+      "covered": 0,
+      "total": 6720,
+      "coverage_pct": 0.0
+    },
+    "director": {
+      "mode": "nonempty",
+      "covered": 0,
+      "total": 6720,
+      "coverage_pct": 0.0
+    },
+    "cast": {
+      "mode": "nonempty",
+      "covered": 0,
+      "total": 6720,
+      "coverage_pct": 0.0
+    },
+    "poster_url": {
+      "mode": "nonempty",
+      "covered": 0,
+      "total": 6720,
+      "coverage_pct": 0.0
+    },
+    "budget": {
+      "mode": ">0",
+      "covered": 0,
+      "total": 6720,
+      "coverage_pct": 0.0
+    },
+    "revenue": {
+      "mode": ">0",
+      "covered": 0,
+      "total": 6720,
+      "coverage_pct": 0.0
+    },
+    "tmdbId": {
+      "mode": "nonempty",
+      "covered": 0,
+      "total": 6720,
+      "coverage_pct": 0.0
+    },
+    "imdbId": {
+      "mode": "nonempty",
+      "covered": 0,
+      "total": 6720,
+      "coverage_pct": 0.0
+    },
+    "genres": {
+      "mode": "nonempty",
+      "covered": 6720,
+      "total": 6720,
+      "coverage_pct": 100.0
+    },
+    "year": {
+      "mode": "nonempty",
+      "covered": 5933,
+      "total": 6720,
+      "coverage_pct": 88.2887
+    },
+    "release_date": {
+      "mode": "nonempty",
+      "covered": 0,
+      "total": 6720,
+      "coverage_pct": 0.0
+    },
+    "runtime": {
+      "mode": ">0",
+      "covered": 0,
+      "total": 6720,
+      "coverage_pct": 0.0
+    },
+    "original_language": {
+      "mode": "nonempty",
+      "covered": 0,
+      "total": 6720,
+      "coverage_pct": 0.0
+    },
+    "production_countries": {
+      "mode": "nonempty",
+      "covered": 0,
+      "total": 6720,
+      "coverage_pct": 0.0
+    },
+    "keywords": {
+      "mode": "nonempty",
+      "covered": 0,
+      "total": 6720,
+      "coverage_pct": 0.0
+    },
+    "tag_genome_tags": {
+      "mode": "nonempty",
+      "covered": 0,
+      "total": 6720,
+      "coverage_pct": 0.0
+    },
+    "vote_average": {
+      "mode": ">0",
+      "covered": 0,
+      "total": 6720,
+      "coverage_pct": 0.0
+    },
+    "vote_count": {
+      "mode": ">0",
+      "covered": 0,
+      "total": 6720,
+      "coverage_pct": 0.0
+    },
+    "popularity": {
+      "mode": ">0",
+      "covered": 0,
+      "total": 6720,
+      "coverage_pct": 0.0
+    },
+    "collection_name": {
+      "mode": "nonempty",
+      "covered": 0,
+      "total": 6720,
+      "coverage_pct": 0.0
+    },
+    "certification": {
+      "mode": "nonempty",
+      "covered": 0,
+      "total": 6720,
+      "coverage_pct": 0.0
+    }
+  },
+  "content_issues": {
+    "any_core_metadata_missing": 6720,
+    "all_core_metadata_missing": 6720,
+    "no_genres_listed": 6720,
+    "missing_year": 787,
+    "tagged_movies": 0,
+    "tagged_movies_pct": 0.0,
+    "no_budget_no_revenue": 6720
+  },
+  "examples": {
+    "missing_enriched_movies": [],
+    "movies_without_ratings": [],
+    "missing_year": [
+      {
+        "movieId": 3713,
+        "title": "10 Things I Hate About You",
+        "genres": "(no genres listed)"
+      },
+      {
+        "movieId": 3716,
+        "title": "12 Angry Men",
+        "genres": "(no genres listed)"
+      },
+      {
+        "movieId": 3721,
+        "title": "13 Going on 30",
+        "genres": "(no genres listed)"
+      },
+      {
+        "movieId": 3724,
+        "title": "18th Rose",
+        "genres": "(no genres listed)"
+      },
+      {
+        "movieId": 3726,
+        "title": "1987: When the Day Comes",
+        "genres": "(no genres listed)"
+      },
+      {
+        "movieId": 3729,
+        "title": "2001: A Space Odyssey",
+        "genres": "(no genres listed)"
+      },
+      {
+        "movieId": 3744,
+        "title": "21",
+        "genres": "(no genres listed)"
+      },
+      {
+        "movieId": 3745,
+        "title": "22 Jump Street",
+        "genres": "(no genres listed)"
+      },
+      {
+        "movieId": 3748,
+        "title": "28 Days Later",
+        "genres": "(no genres listed)"
+      },
+      {
+        "movieId": 3751,
+        "title": "28 Years Later: The Bone Temple",
+        "genres": "(no genres listed)"
+      }
+    ],
+    "no_genres_listed": [
+      {
+        "movieId": 1,
+        "title": "10 Cloverfield Lane (2016)",
+        "genres": "(no genres listed)"
+      },
+      {
+        "movieId": 2,
+        "title": "10 Things I Hate About You (1999)",
+        "genres": "(no genres listed)"
+      },
+      {
+        "movieId": 3,
+        "title": "100 Liters of Gold (2024)",
+        "genres": "(no genres listed)"
+      },
+      {
+        "movieId": 4,
+        "title": "100 METERS (2025)",
+        "genres": "(no genres listed)"
+      },
+      {
+        "movieId": 5,
+        "title": "10DANCE (2025)",
+        "genres": "(no genres listed)"
+      },
+      {
+        "movieId": 6,
+        "title": "11.22.63 (2016)",
+        "genres": "(no genres listed)"
+      },
+      {
+        "movieId": 7,
+        "title": "12 Angry Men (1957)",
+        "genres": "(no genres listed)"
+      },
+      {
+        "movieId": 8,
+        "title": "12 Years a Slave (2013)",
+        "genres": "(no genres listed)"
+      },
+      {
+        "movieId": 9,
+        "title": "120 Bahadur (2025)",
+        "genres": "(no genres listed)"
+      },
+      {
+        "movieId": 10,
+        "title": "13 Days, 13 Nights (2025)",
+        "genres": "(no genres listed)"
+      }
+    ]
+  },
+  "recommendations": [
+    "Use warm-item ranking as the primary pure-CF metric, and report cold-item metrics separately for hybrid/content fallback.",
+    "Use minimum-interaction filters or segment metrics by item popularity for stable offline comparisons.",
+    "Treat zero budget/revenue as missing values; do not use finance metadata as a primary feature."
+  ]
+}

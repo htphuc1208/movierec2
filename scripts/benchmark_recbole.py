@@ -15,6 +15,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from data import MovieLensDataLoader
+from evaluation import PROTOCOL_NAME, temporal_train_val_test_split
 
 
 DEFAULT_MODELS = ["Pop", "ItemKNN", "BPR", "LightGCN"]
@@ -35,7 +36,37 @@ def prepare_recbole_dataset(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     bundle = MovieLensDataLoader(data_dir).load()
-    interactions = bundle.ratings.loc[bundle.ratings["rating"] >= positive_threshold].copy()
+    splits = temporal_train_val_test_split(bundle.ratings)
+    row_counts: dict[str, int] = {}
+    frames = {
+        "train": splits.train,
+        "valid": splits.validation,
+        "test": splits.test,
+    }
+    all_positive: list[pd.DataFrame] = []
+    for suffix, frame in frames.items():
+        interactions = to_recbole_interactions(frame, positive_threshold)
+        interactions.to_csv(output_dir / f"{dataset}.{suffix}.inter", sep="\t", index=False)
+        row_counts[suffix] = int(len(interactions))
+        all_positive.append(interactions)
+    pd.concat(all_positive, ignore_index=True).to_csv(output_dir / f"{dataset}.inter", sep="\t", index=False)
+    (output_dir / "split_summary.json").write_text(
+        json.dumps(
+            {
+                "dataset": dataset,
+                "protocol": PROTOCOL_NAME,
+                "positive_threshold": positive_threshold,
+                "rows": row_counts,
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    return output_dir
+
+
+def to_recbole_interactions(frame: pd.DataFrame, positive_threshold: float) -> pd.DataFrame:
+    interactions = frame.loc[pd.to_numeric(frame["rating"], errors="coerce") >= positive_threshold].copy()
     interactions = interactions.sort_values(["userId", "timestamp", "movieId"])
     interactions = interactions.rename(
         columns={
@@ -45,9 +76,7 @@ def prepare_recbole_dataset(
             "timestamp": "timestamp:float",
         }
     )
-    interactions = interactions[["user_id:token", "item_id:token", "rating:float", "timestamp:float"]]
-    interactions.to_csv(output_dir / f"{dataset}.inter", sep="\t", index=False)
-    return output_dir
+    return interactions[["user_id:token", "item_id:token", "rating:float", "timestamp:float"]]
 
 
 def build_recbole_config(args: argparse.Namespace, model_name: str, dataset_name: str, data_root: Path) -> dict[str, Any]:
@@ -62,6 +91,7 @@ def build_recbole_config(args: argparse.Namespace, model_name: str, dataset_name
         "RATING_FIELD": "rating",
         "TIME_FIELD": "timestamp",
         "load_col": {"inter": ["user_id", "item_id", "rating", "timestamp"]},
+        "benchmark_filename": ["train", "valid", "test"],
         "eval_args": {
             "group_by": "user",
             "order": "TO",
@@ -219,6 +249,9 @@ def run_benchmark(args: argparse.Namespace) -> list[dict[str, Any]]:
 
     dataset_name = args.dataset_name or dataset_name_from_dir(args.data_dir)
     recbole_root = Path(args.recbole_root)
+    output_prefix = Path(args.output_prefix or Path("artifacts/benchmarks") / dataset_name)
+    artifact_root = Path(args.artifact_root) / dataset_name
+    args.checkpoint_dir = str(Path(args.checkpoint_dir) / dataset_name)
     prepare_recbole_dataset(args.data_dir, recbole_root, dataset_name, args.positive_threshold)
 
     results: list[dict[str, Any]] = []
@@ -231,15 +264,18 @@ def run_benchmark(args: argparse.Namespace) -> list[dict[str, Any]]:
         finally:
             sys.argv = original_argv
         result = normalise_result(model_name, raw_result)
+        result["dataset"] = dataset_name
+        result["protocol"] = PROTOCOL_NAME
+        result["command"] = " ".join(sys.argv)
         results.append(result)
         if model_name in {"BPR", "LightGCN", "SGL", "NCL"}:
-            export_dir = Path(args.artifact_root) / f"recbole-{model_name.lower()}"
+            export_dir = artifact_root / f"recbole-{model_name.lower()}"
             result["artifact_dir"] = str(
                 export_recbole_embeddings(Path(args.checkpoint_dir), export_dir, dataset_name, model_name, result, args.positive_threshold)
                 or ""
             )
 
-    write_reports(results, Path(args.output_prefix))
+    write_reports(results, output_prefix)
     return results
 
 
@@ -250,7 +286,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--recbole-root", default="artifacts/recbole")
     parser.add_argument("--checkpoint-dir", default="artifacts/recbole/checkpoints")
     parser.add_argument("--artifact-root", default="artifacts/recommender")
-    parser.add_argument("--output-prefix", default="artifacts/benchmarks/ml-latest-small")
+    parser.add_argument("--output-prefix", default="")
     parser.add_argument("--models", default=",".join(DEFAULT_MODELS))
     parser.add_argument("--top-k", nargs="+", type=int, default=[10, 20])
     parser.add_argument("--positive-threshold", type=float, default=4.0)
