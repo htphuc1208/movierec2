@@ -1,24 +1,25 @@
 Crawl report
-Generated at: 2026-05-26T06:33:46+00:00
+Generated at: 2026-06-02T11:42:19+00:00
 
 Raw dataset:
-- Users: 551
-- Movies: 10000
-- Interactions: 34009
-- Non-null ratings: 24300
-- Avg interactions/user: 61.72
-- Avg interactions/movie: 3.4
-- Interaction types: {'favorite': 1611, 'watched': 8965, 'liked': 325, 'rating': 22689, 'diary': 219, 'review': 200}
-- Users with <10 interactions: 38
-- Movies with <5 interactions: 8980
+- Users: 1645
+- Movies: 30000
+- Interactions: 121157
+- Non-null ratings: 89432
+- Avg interactions/user: 73.92
+- Avg interactions/movie: 4.04
+- Interaction types: {'favorite': 4268, 'watched': 28350, 'liked': 1192, 'rating': 85164, 'diary': 947, 'review': 1236}
+- Users with <10 interactions: 153
+- Movies with <5 interactions: 27322
 
 CF-ready dataset after k-core filtering:
-- Users: 479
-- Movies: 1005
-- Interactions: 22759
-- Non-null ratings: 15413
-- Avg interactions/user: 47.51
-- Avg interactions/movie: 22.65
+- Target users/movies/interactions: 600/2500/100000
+- Users: 1408
+- Movies: 2636
+- Interactions: 87855
+- Non-null ratings: 62815
+- Avg interactions/user: 62.4
+- Avg interactions/movie: 33.33
 
 Files:
 - C:\Users\nqkie\Downloads\movie_recommender\data\raw\users.csv
