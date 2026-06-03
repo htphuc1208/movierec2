@@ -5,6 +5,7 @@ import sys
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote_plus
 
 import pandas as pd
 import requests
@@ -97,10 +98,22 @@ def recommend(user_id: int | None, top_k: int, session_context: list[str], exclu
     )
 
 
+def load_movie_collection(path: str) -> list[dict[str, Any]]:
+    data = api_get(path)
+    if data and "movies" in data:
+        return data["movies"]
+    return []
+
+
+def load_user_history(user_id: int, top_k: int = 15) -> list[dict[str, Any]]:
+    return load_movie_collection(f"/users/{user_id}/history?top_k={top_k}")
+
+
 def render_card(movie: dict[str, Any]) -> None:
     poster_url = movie.get("poster_url") or ""
     title = movie.get("title", "Untitled")
-    score = float(movie.get("score", 0.0))
+    score = float(movie.get("score") or movie.get("rating_mean") or 0.0)
+    vote_count = int(movie.get("vote_count") or 0)
     genres = movie.get("genres", "")
     overview = movie.get("overview", "")
     reasons = movie.get("reason", [])
@@ -117,12 +130,26 @@ def render_card(movie: dict[str, Any]) -> None:
                 st.markdown(f"**{title}**")
         with right:
             st.markdown(f"### {title}")
-            st.caption(f"Score {score:.3f} | {genres}")
-            st.caption(f"CF {cf_score:.3f} | Content {content_score:.3f} | Popularity {popularity_score:.3f}")
+            st.caption(f"Score {score:.3f} | Votes {vote_count} | {genres}")
+            if cf_score or content_score or popularity_score:
+                st.caption(f"CF {cf_score:.3f} | Content {content_score:.3f} | Popularity {popularity_score:.3f}")
+            if "user_rating" in movie:
+                st.caption(f"Your rating {float(movie['user_rating']):.1f}")
             if overview:
                 st.write(overview)
             if reasons:
                 st.write(" | ".join(str(reason) for reason in reasons))
+
+
+def render_movie_grid(movies: list[dict[str, Any]], columns: int = 3) -> None:
+    if not movies:
+        st.info("No movies to show.")
+        return
+    for row_start in range(0, len(movies), columns):
+        row_columns = st.columns(columns)
+        for column, movie in zip(row_columns, movies[row_start : row_start + columns]):
+            with column:
+                render_card(movie)
 
 
 def main() -> None:
@@ -158,18 +185,36 @@ def main() -> None:
     selected_ids = movie_frame.loc[movie_frame["title"].isin(selected_titles), "movieId"].astype(str).tolist()
     user_id = None if selected_user == "Guest" else int(selected_user)
 
-    recommendations = recommend(user_id, top_k, selected_ids, exclude_seen)
+    recommend_tab, discover_tab, history_tab = st.tabs(["Recommendations", "Discover", "History"])
 
-    metric_cols = st.columns(3)
-    metric_cols[0].metric("Results", len(recommendations))
-    metric_cols[1].metric("User", "Guest" if user_id is None else user_id)
-    metric_cols[2].metric("Session", len(selected_ids))
+    with recommend_tab:
+        recommendations = recommend(user_id, top_k, selected_ids, exclude_seen)
+        metric_cols = st.columns(3)
+        metric_cols[0].metric("Results", len(recommendations))
+        metric_cols[1].metric("User", "Guest" if user_id is None else user_id)
+        metric_cols[2].metric("Session", len(selected_ids))
+        render_movie_grid(recommendations, columns=2)
 
-    for row_start in range(0, len(recommendations), 2):
-        columns = st.columns(2)
-        for column, movie in zip(columns, recommendations[row_start : row_start + 2]):
-            with column:
-                render_card(movie)
+    with discover_tab:
+        search = st.text_input("Search movies")
+        if search.strip():
+            render_movie_grid(load_movie_collection(f"/movies?search={quote_plus(search.strip())}")[:top_k], columns=2)
+        else:
+            collections = {
+                "Trending": "/movies/trending?top_k=12",
+                "Top Rated": "/movies/top-rated?top_k=12",
+                "Latest": "/movies/latest?top_k=12",
+                "Action": "/movies/genre/Action?top_k=12",
+                "Comedy": "/movies/genre/Comedy?top_k=12",
+            }
+            selected_collection = st.selectbox("Collection", list(collections))
+            render_movie_grid(load_movie_collection(collections[selected_collection]), columns=3)
+
+    with history_tab:
+        if user_id is None:
+            st.info("Select a user to view rating history.")
+        else:
+            render_movie_grid(load_user_history(user_id, top_k=top_k), columns=2)
 
 
 if __name__ == "__main__":

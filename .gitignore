@@ -26,5 +26,6 @@ data/ml-20m/
 data/ml-latest/
 data/*.zip
 crawl/data/*.zip
+crawl/data/reprocessing/
 data/raw/*.dat
 data/processed/*.csv
