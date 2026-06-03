@@ -7,6 +7,27 @@ from tempfile import TemporaryDirectory
 import pandas as pd
 
 from scripts.prepare_letterboxd import prepare_letterboxd
+from scripts.enrich_tmdb import movie_query_and_year, resolve_missing_tmdb_ids
+
+
+class FakeResponse:
+    def __init__(self, payload: dict) -> None:
+        self._payload = payload
+
+    def raise_for_status(self) -> None:
+        return None
+
+    def json(self) -> dict:
+        return self._payload
+
+
+class FakeSession:
+    def __init__(self) -> None:
+        self.calls = []
+
+    def get(self, url, params=None, timeout=None):  # noqa: ANN001
+        self.calls.append({"url": url, "params": params, "timeout": timeout})
+        return FakeResponse({"results": [{"id": 12345}]})
 
 
 class PrepareLetterboxdTest(unittest.TestCase):
@@ -53,6 +74,22 @@ class PrepareLetterboxdTest(unittest.TestCase):
             self.assertEqual(enriched["enrichment_status"].unique().tolist(), ["missing_enrichment_placeholder"])
             self.assertEqual(movie_mapping.loc[movie_mapping["raw_movie_id"] == "raw-a", "movieId"].iloc[0], 1)
             self.assertEqual(movie_mapping.loc[movie_mapping["raw_movie_id"] == "raw-a-dup", "movieId"].iloc[0], 1)
+
+    def test_tmdb_search_resolver_uses_title_and_year(self) -> None:
+        movies = pd.DataFrame({"movieId": [1], "title": ["Alpha (2001)"], "year": ["2001"]})
+        links = pd.DataFrame({"movieId": [1], "imdbId": [""], "tmdbId": [""]})
+        selected, updated_links, summary = resolve_missing_tmdb_ids(
+            links,
+            links,
+            movies,
+            "fake-key",
+            FakeSession(),
+            sleep=0.0,
+        )
+        self.assertEqual(summary, {"searched": 1, "matched": 1})
+        self.assertEqual(str(selected.loc[0, "tmdbId"]), "12345")
+        self.assertEqual(str(updated_links.loc[0, "tmdbId"]), "12345")
+        self.assertEqual(movie_query_and_year({"title": "Beta (1999)", "year": ""}), ("Beta", "1999"))
 
 
 if __name__ == "__main__":

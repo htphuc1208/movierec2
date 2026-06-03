@@ -29,14 +29,40 @@ class BenchmarkProtocolTest(unittest.TestCase):
             "precision_at_k": 0.1,
             "all_precision_at_k": 0.2,
             "all_ndcg_at_k": 0.3,
+            "warm_ndcg_at_k": 0.25,
+            "cold_ndcg_at_k": 0.05,
+            "warm_test_interactions": 12,
+            "cold_test_interactions": 3,
             "test_rmse": 0.9,
             "test_mae": 0.7,
         }
         normalised = normalise_metrics(metrics)
         self.assertEqual(normalised["precision@10"], 0.2)
         self.assertEqual(normalised["ndcg@10"], 0.3)
+        self.assertEqual(normalised["warm_ndcg@10"], 0.25)
+        self.assertEqual(normalised["cold_ndcg@10"], 0.05)
+        self.assertEqual(normalised["warm_interactions"], 12)
+        self.assertEqual(normalised["cold_interactions"], 3)
         self.assertEqual(normalised["rmse"], 0.9)
         self.assertEqual(normalised["mae"], 0.7)
+
+    def test_leaderboard_metric_normalizer_reads_nested_segments(self) -> None:
+        normalised = normalise_metrics(
+            {
+                "test": {"ndcg@10": 0.4},
+                "test_segments": {
+                    "warm_interactions": 9,
+                    "cold_interactions": 2,
+                    "warm": {"ndcg@10": 0.5, "mrr@10": 0.6},
+                    "cold": {"ndcg@10": 0.1, "mrr@10": 0.2},
+                },
+            }
+        )
+        self.assertEqual(normalised["ndcg@10"], 0.4)
+        self.assertEqual(normalised["warm_ndcg@10"], 0.5)
+        self.assertEqual(normalised["cold_mrr@10"], 0.2)
+        self.assertEqual(normalised["warm_interactions"], 9)
+        self.assertEqual(normalised["cold_interactions"], 2)
 
 
 if __name__ == "__main__":

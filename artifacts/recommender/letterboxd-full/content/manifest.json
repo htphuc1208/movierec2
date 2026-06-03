@@ -1,0 +1,42 @@
+{
+  "artifact_version": 1,
+  "created_at": "2026-06-03T06:07:23.759967+00:00",
+  "dataset": "letterboxd-full",
+  "model_name": "content-tfidf",
+  "model_source": "content_baseline",
+  "positive_threshold": 4.0,
+  "weights": {
+    "collaborative": 0.0,
+    "content": 1.0,
+    "popularity": 0.0
+  },
+  "collaborative": {
+    "mode": "funk_svd",
+    "engine": "torch",
+    "factors": 24
+  },
+  "content": {
+    "backend": "tfidf"
+  },
+  "files": {
+    "collaborative": "collaborative.npz"
+  },
+  "metrics": {
+    "test": {
+      "precision@10": 0.004597701149425287,
+      "recall@10": 0.032758620689655175,
+      "ndcg@10": 0.01966430098319555,
+      "mrr@10": 0.016979565772669222,
+      "warm_precision@10": 0.003980099502487563,
+      "warm_recall@10": 0.03171641791044776,
+      "warm_ndcg@10": 0.018777171023748946,
+      "warm_mrr@10": 0.016300442233278055,
+      "cold_precision@10": 0.00202020202020202,
+      "cold_recall@10": 0.015151515151515152,
+      "cold_ndcg@10": 0.007232297146980334,
+      "cold_mrr@10": 0.004208754208754209,
+      "warm_test_interactions": 2657.0,
+      "cold_test_interactions": 745.0
+    }
+  }
+}

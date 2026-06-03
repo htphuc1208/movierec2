@@ -20,6 +20,14 @@ LEADERBOARD_COLUMNS = [
     "recall@10",
     "ndcg@10",
     "mrr@10",
+    "warm_precision@10",
+    "warm_recall@10",
+    "warm_ndcg@10",
+    "warm_mrr@10",
+    "cold_precision@10",
+    "cold_recall@10",
+    "cold_ndcg@10",
+    "cold_mrr@10",
     "precision@20",
     "recall@20",
     "ndcg@20",
@@ -27,6 +35,8 @@ LEADERBOARD_COLUMNS = [
     "rmse",
     "mae",
     "best_epoch",
+    "warm_interactions",
+    "cold_interactions",
     "artifact_dir",
     "command",
     "seed",
@@ -66,6 +76,14 @@ def leaderboard_row(
         "recall@10",
         "ndcg@10",
         "mrr@10",
+        "warm_precision@10",
+        "warm_recall@10",
+        "warm_ndcg@10",
+        "warm_mrr@10",
+        "cold_precision@10",
+        "cold_recall@10",
+        "cold_ndcg@10",
+        "cold_mrr@10",
         "precision@20",
         "recall@20",
         "ndcg@20",
@@ -73,6 +91,8 @@ def leaderboard_row(
         "rmse",
         "mae",
         "best_epoch",
+        "warm_interactions",
+        "cold_interactions",
     ]:
         if key in normalised:
             row[key] = normalised[key]
@@ -82,35 +102,31 @@ def leaderboard_row(
 def normalise_metrics(metrics: dict[str, Any], top_k: int = 10) -> dict[str, Any]:
     """Normalize metric variants from local trainers, RecBole, manifests, and tuning results."""
 
-    metrics = _unwrap_metrics(metrics)
+    root_metrics = dict(metrics or {})
+    segments = _extract_segments(root_metrics)
+    metrics = _unwrap_metrics(root_metrics)
     normalised: dict[str, Any] = {}
 
     for key, value in metrics.items():
-        lowered = str(key).lower()
-        canonical = lowered.replace("_at_k", f"@{top_k}")
-        if canonical.startswith("all_"):
-            canonical = canonical.removeprefix("all_")
-        elif canonical.startswith("warm_"):
-            continue
-        elif canonical.startswith("cold_"):
-            continue
-        if canonical in {
-            "precision@10",
-            "recall@10",
-            "ndcg@10",
-            "mrr@10",
-            "precision@20",
-            "recall@20",
-            "ndcg@20",
-            "mrr@20",
-            "rmse",
-            "mae",
-            "test_rmse",
-            "rating_rmse",
-            "test_mae",
-            "best_epoch",
-        }:
+        canonical = _canonical_key(str(key), top_k)
+        if canonical in _metric_keys():
             normalised[canonical] = _json_scalar(value)
+
+    for metric in ["precision", "recall", "ndcg", "mrr"]:
+        raw_key = f"{metric}_at_k"
+        all_key = f"all_{metric}_at_k"
+        warm_key = f"warm_{metric}@{top_k}"
+        if raw_key in metrics and all_key in metrics and warm_key in _metric_keys():
+            normalised[warm_key] = _json_scalar(metrics[raw_key])
+
+    for prefix, segment_metrics in segments.items():
+        if prefix in {"warm", "cold"} and isinstance(segment_metrics, dict):
+            for key, value in segment_metrics.items():
+                canonical = _canonical_key(f"{prefix}_{key}", top_k)
+                if canonical in _metric_keys():
+                    normalised[canonical] = _json_scalar(value)
+        elif prefix in {"warm_interactions", "cold_interactions"}:
+            normalised[prefix] = _json_scalar(segment_metrics)
 
     if "test_rmse" in normalised and "rmse" not in normalised:
         normalised["rmse"] = normalised["test_rmse"]
@@ -157,12 +173,88 @@ def _unwrap_metrics(metrics: dict[str, Any]) -> dict[str, Any]:
     return current
 
 
+def _extract_segments(metrics: dict[str, Any]) -> dict[str, Any]:
+    segments: dict[str, Any] = {}
+    for container in [metrics, metrics.get("test", {}) if isinstance(metrics.get("test"), dict) else {}]:
+        if not isinstance(container, dict):
+            continue
+        nested = container.get("test_segments", {})
+        if isinstance(nested, dict):
+            for key in ["warm", "cold"]:
+                if isinstance(nested.get(key), dict):
+                    segments[key] = nested[key]
+            if "warm_interactions" in nested:
+                segments["warm_interactions"] = nested["warm_interactions"]
+            if "cold_interactions" in nested:
+                segments["cold_interactions"] = nested["cold_interactions"]
+        for key in ["warm_interactions", "cold_interactions", "warm_test_interactions", "cold_test_interactions"]:
+            if key in container:
+                segments[key] = container[key]
+
+    if "warm_interactions" not in metrics and "warm_test_interactions" in segments:
+        segments["warm_interactions"] = segments["warm_test_interactions"]
+    if "cold_interactions" not in metrics and "cold_test_interactions" in segments:
+        segments["cold_interactions"] = segments["cold_test_interactions"]
+    return segments
+
+
+def _canonical_key(key: str, top_k: int) -> str:
+    canonical = key.lower().replace("_at_k", f"@{top_k}")
+    if canonical.startswith("all_"):
+        canonical = canonical.removeprefix("all_")
+    if canonical == "warm_test_interactions":
+        canonical = "warm_interactions"
+    if canonical == "cold_test_interactions":
+        canonical = "cold_interactions"
+    return canonical
+
+
+def _metric_keys() -> set[str]:
+    return {
+        "precision@10",
+        "recall@10",
+        "ndcg@10",
+        "mrr@10",
+        "warm_precision@10",
+        "warm_recall@10",
+        "warm_ndcg@10",
+        "warm_mrr@10",
+        "cold_precision@10",
+        "cold_recall@10",
+        "cold_ndcg@10",
+        "cold_mrr@10",
+        "precision@20",
+        "recall@20",
+        "ndcg@20",
+        "mrr@20",
+        "rmse",
+        "mae",
+        "test_rmse",
+        "rating_rmse",
+        "test_mae",
+        "best_epoch",
+        "warm_interactions",
+        "cold_interactions",
+    }
+
+
 def _ordered_row(row: dict[str, Any]) -> dict[str, Any]:
     return {column: row.get(column, "") for column in LEADERBOARD_COLUMNS}
 
 
 def _markdown_table(rows: list[dict[str, Any]]) -> str:
-    visible = ["model", "source", "ndcg@10", "mrr@10", "recall@10", "precision@10", "rmse", "artifact_dir"]
+    visible = [
+        "model",
+        "source",
+        "ndcg@10",
+        "warm_ndcg@10",
+        "cold_ndcg@10",
+        "mrr@10",
+        "recall@10",
+        "precision@10",
+        "rmse",
+        "artifact_dir",
+    ]
     lines = ["| " + " | ".join(visible) + " |", "| " + " | ".join("---" for _ in visible) + " |"]
     for row in rows:
         lines.append("| " + " | ".join(str(row.get(column, "")) for column in visible) + " |")

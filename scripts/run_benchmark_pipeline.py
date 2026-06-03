@@ -21,6 +21,7 @@ from scripts.audit_data_quality import build_report, write_reports as write_data
 from scripts.benchmark_recbole import prepare_recbole_dataset
 from scripts.build_leaderboard import rows_from_manifest, rows_from_recbole_report
 from scripts.train_baseline import evaluate as evaluate_baseline
+from scripts.train_content_baseline import evaluate as evaluate_content_baseline
 from scripts.train_lightgcn import train as train_lightgcn
 from scripts.train_svd import train as train_svd
 from scripts.train_two_tower import train as train_two_tower
@@ -63,6 +64,22 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
             )
         )
         completed.append("baseline")
+
+    if should_run(args, "content"):
+        artifact_dir = scoped_root / "content"
+        metrics = evaluate_content_baseline(str(data_dir), args.top_k, str(artifact_dir), dataset)
+        rows.append(
+            leaderboard_row(
+                dataset=dataset,
+                model="content-tfidf",
+                model_family="content",
+                source="content_baseline",
+                metrics=metrics,
+                artifact_dir=str(artifact_dir),
+                command=f"scripts/train_content_baseline.py --data-dir {data_dir}",
+            )
+        )
+        completed.append("content")
 
     if should_run(args, "svd"):
         try:
@@ -137,7 +154,7 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
         else:
             skipped["tune"] = "no compatible collaborative artifacts"
 
-    rows = merge_rows(existing_core_artifact_rows(scoped_root), rows)
+    rows = merge_rows(existing_artifact_rows(scoped_root), rows)
     if rows:
         write_leaderboard(rows, leaderboard_prefix)
         best_artifact = first_existing_artifact(sort_leaderboard(rows))
@@ -163,12 +180,12 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
     return result
 
 
-def existing_core_artifact_rows(scoped_root: Path) -> list[dict[str, Any]]:
+def existing_artifact_rows(scoped_root: Path) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    for name in ["baseline", "svd", "lightgcn", "two-tower"]:
-        manifest_path = scoped_root / name / "manifest.json"
-        if manifest_path.exists():
-            rows.extend(rows_from_manifest(manifest_path))
+    for manifest_path in sorted(scoped_root.glob("*/manifest.json")):
+        if manifest_path.parent.name == "latest":
+            continue
+        rows.extend(rows_from_manifest(manifest_path))
     return rows
 
 
@@ -212,7 +229,10 @@ def tune_available_artifacts(args: argparse.Namespace, data_dir: Path, scoped_ro
                 model=f"hybrid-{name.lower()}-tfidf",
                 model_family="hybrid",
                 source="tuned_hybrid",
-                metrics=result.get("test", {}),
+                metrics={
+                    "test": result.get("test", {}),
+                    "test_segments": result.get("test_segments", {}),
+                },
                 artifact_dir=str(output_dir),
                 tuned_weights=result.get("weights", {}),
                 command=f"scripts/tune_hybrid.py --data-dir {data_dir} --cf-artifact-dir {artifact_dir}",
@@ -346,7 +366,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dataset", required=True)
     parser.add_argument("--data-dir", required=True)
     parser.add_argument("--profile", choices=["smoke", "full"], default="full")
-    parser.add_argument("--models", default="baseline,svd,lightgcn,two_tower,tune,recbole")
+    parser.add_argument("--models", default="baseline,content,svd,lightgcn,two_tower,tune,recbole")
     parser.add_argument("--top-k", type=int, default=10)
     parser.add_argument("--positive-threshold", type=float, default=DEFAULT_POSITIVE_THRESHOLD)
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED)

@@ -18,7 +18,7 @@ def rows_from_manifest(path: str | Path) -> list[dict[str, Any]]:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     dataset = str(manifest.get("dataset", ""))
     model = str(manifest.get("model_name", manifest_path.parent.name))
-    source = str(manifest.get("model_source", "artifact"))
+    source = "tuned_hybrid" if manifest.get("tuning") else str(manifest.get("model_source", "artifact"))
     family = model_family(model, source)
     metrics = manifest.get("metrics", {})
     return [
@@ -63,6 +63,8 @@ def rows_from_recbole_report(path: str | Path, dataset: str, artifact_root: str 
 
 def model_family(model: str, source: str) -> str:
     text = f"{model} {source}".lower()
+    if "hybrid" in text or "tuned_hybrid" in text:
+        return "hybrid"
     if "lightgcn" in text:
         return "lightgcn"
     if "two" in text and "tower" in text:
@@ -75,6 +77,8 @@ def model_family(model: str, source: str) -> str:
         return "itemknn"
     if "pop" in text:
         return "popularity"
+    if "content" in text:
+        return "content"
     return "hybrid"
 
 

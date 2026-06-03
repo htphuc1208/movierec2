@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import time
 from pathlib import Path
 from typing import Any
@@ -12,6 +13,7 @@ from tqdm import tqdm
 
 
 TMDB_API = "https://api.themoviedb.org/3/movie/{tmdb_id}"
+TMDB_SEARCH = "https://api.themoviedb.org/3/search/movie"
 IMAGE_BASE = "https://image.tmdb.org/t/p/w500"
 TMDB_APPEND = "credits,keywords,release_dates"
 CORE_METADATA_COLUMNS = ["overview", "director", "cast", "poster_url"]
@@ -146,6 +148,37 @@ def fetch_movie(
     raise requests.exceptions.Timeout(f"Failed after {max_retries} retries: tmdb_id={tmdb_id}")
 
 
+def search_movie(
+    query: str,
+    year: str,
+    api_key: str,
+    session: requests.Session,
+    max_retries: int = 3,
+) -> dict[str, Any] | None:
+    params = {"api_key": api_key, "query": query}
+    if year:
+        params["year"] = year
+        params["primary_release_year"] = year
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            response = session.get(TMDB_SEARCH, params=params, timeout=(10, 60))
+            response.raise_for_status()
+            results = response.json().get("results", [])
+            return results[0] if results else None
+        except requests.exceptions.HTTPError as exc:
+            status = exc.response.status_code if exc.response is not None else None
+            if status != 429:
+                raise
+            print(f"rate limited search query={query!r}, retry {attempt}/{max_retries}")
+        except requests.exceptions.Timeout:
+            print(f"timeout search query={query!r}, retry {attempt}/{max_retries}")
+
+        time.sleep(2 * attempt)
+
+    return None
+
+
 def load_existing_enriched(data_dir: Path) -> pd.DataFrame:
     path = data_dir / "enriched_movies.csv"
     if path.exists():
@@ -208,6 +241,75 @@ def select_links(
     return links
 
 
+def resolve_missing_tmdb_ids(
+    selected: pd.DataFrame,
+    links: pd.DataFrame,
+    movies: pd.DataFrame,
+    api_key: str,
+    session: requests.Session,
+    *,
+    sleep: float,
+) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, int]]:
+    selected = selected.copy()
+    links = links.copy()
+    movies = movies.copy()
+    for frame in [selected, links, movies]:
+        frame["movieId"] = frame["movieId"].astype(int)
+    for column in ["tmdbId", "imdbId"]:
+        if column not in selected.columns:
+            selected[column] = ""
+        if column not in links.columns:
+            links[column] = ""
+
+    movies_by_id = movies.set_index("movieId").to_dict(orient="index")
+    searched = 0
+    matched = 0
+
+    for row in selected.itertuples():
+        movie_id = int(row.movieId)
+        if clean_external_id(getattr(row, "tmdbId", "")):
+            continue
+        movie = movies_by_id.get(movie_id)
+        if not movie:
+            continue
+        query, year = movie_query_and_year(movie)
+        if not query:
+            continue
+
+        searched += 1
+        result = search_movie(query, year, api_key, session)
+        if not result and year:
+            result = search_movie(query, "", api_key, session)
+        if not result:
+            continue
+
+        tmdb_id = str(result.get("id", "")).strip()
+        if not tmdb_id:
+            continue
+        matched += 1
+        selected.loc[selected["movieId"].eq(movie_id), "tmdbId"] = tmdb_id
+        links.loc[links["movieId"].eq(movie_id), "tmdbId"] = tmdb_id
+        time.sleep(max(0.0, sleep))
+
+    return selected, links, {"searched": searched, "matched": matched}
+
+
+def clean_external_id(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text or text.lower() in {"nan", "none", "0", "0.0"}:
+        return ""
+    return text.split(".")[0]
+
+
+def movie_query_and_year(movie: dict[str, Any]) -> tuple[str, str]:
+    title = str(movie.get("title", "") or "").strip()
+    explicit_year = str(movie.get("year", "") or "").strip()
+    match = re.search(r"\((\d{4})\)\s*$", title)
+    year = explicit_year if explicit_year and explicit_year.lower() != "nan" else (match.group(1) if match else "")
+    query = re.sub(r"\s*\(\d{4}\)\s*$", "", title).strip()
+    return query, year
+
+
 def merge_enriched(existing: pd.DataFrame, new_rows: list[dict[str, Any]]) -> pd.DataFrame:
     if not new_rows:
         return existing
@@ -255,6 +357,11 @@ def main() -> None:
         default="",
         help="Comma-separated metadata columns to refresh when empty, for example: keywords,release_date,runtime.",
     )
+    parser.add_argument(
+        "--search-missing-tmdb",
+        action="store_true",
+        help="Search TMDb by movies.csv title/year for selected rows with missing tmdbId, then update links.csv.",
+    )
     args = parser.parse_args()
 
     api_key = os.getenv("TMDB_API_KEY")
@@ -263,6 +370,7 @@ def main() -> None:
 
     data_dir = Path(args.data_dir)
     links = pd.read_csv(data_dir / "links.csv")
+    movies = pd.read_csv(data_dir / "movies.csv")
     existing = load_existing_enriched(data_dir)
 
     rows = []
@@ -277,17 +385,34 @@ def main() -> None:
     selected = selected.head(args.limit) if args.limit else selected
 
     session = requests.Session()
+    if args.search_missing_tmdb:
+        selected, links, search_summary = resolve_missing_tmdb_ids(
+            selected,
+            links,
+            movies,
+            api_key,
+            session,
+            sleep=args.sleep,
+        )
+        links.to_csv(data_dir / "links.csv", index=False)
+        print(
+            "TMDb search updated links.csv: "
+            f"searched={search_summary['searched']} matched={search_summary['matched']}"
+        )
 
     for row in tqdm(selected.itertuples(), total=len(selected)):
-        tmdb_id = str(row.tmdbId).split(".")[0]
+        tmdb_id = clean_external_id(getattr(row, "tmdbId", ""))
 
-        if not tmdb_id or tmdb_id == "nan":
+        if not tmdb_id:
             continue
 
         try:
             metadata = fetch_movie(tmdb_id, api_key, session)
             metadata["movieId"] = int(row.movieId)
             rows.append(metadata)
+            imdb_id = str(metadata.get("imdb_id", "") or "").strip()
+            if imdb_id:
+                links.loc[links["movieId"].astype(int).eq(int(row.movieId)), "imdbId"] = imdb_id
             time.sleep(args.sleep)
 
         except requests.RequestException as exc:
@@ -298,6 +423,7 @@ def main() -> None:
     else:
         output = merge_enriched(existing, rows)
     output.to_csv(data_dir / "enriched_movies.csv", index=False)
+    links.to_csv(data_dir / "links.csv", index=False)
     print(f"Wrote {len(output)} rows to {data_dir / 'enriched_movies.csv'}")
 
 

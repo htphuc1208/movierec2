@@ -5,8 +5,8 @@
   "profile": "full",
   "completed": [
     "recbole_atomic_split",
-    "recbole_report",
-    "tune"
+    "content",
+    "recbole_report"
   ],
   "skipped": {},
   "leaderboard": "artifacts/leaderboards/ml-latest-small.csv"

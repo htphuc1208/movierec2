@@ -1,6 +1,6 @@
 {
   "artifact_version": 1,
-  "created_at": "2026-06-03T04:49:42.151558+00:00",
+  "created_at": "2026-06-03T06:05:12.678802+00:00",
   "dataset": "letterboxd-full",
   "model_name": "hybrid-svd-tfidf",
   "model_source": "artifact",

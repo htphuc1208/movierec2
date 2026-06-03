@@ -147,7 +147,7 @@ python3 scripts/train_baseline.py --data-dir data/ml-latest-small
 
 The shared benchmark protocol is `per_user_temporal_80_10_10_pos4_full`:
 per-user temporal split, `rating >= 4.0` positives, `topk=[10,20]`, and primary ranking metric `NDCG@10`.
-Leaderboard files are written to `artifacts/leaderboards/`.
+Leaderboard files are written to `artifacts/leaderboards/`. The CSV/JSON outputs include aggregate metrics plus `warm_*` and `cold_*` segment columns for local/API-loadable artifacts; RecBole aggregate-only rows leave segment columns empty.
 
 Current best rows:
 
@@ -164,7 +164,7 @@ python3 scripts/prepare_letterboxd.py --raw-dir crawl/data/raw --output-dir data
 python3 scripts/run_benchmark_pipeline.py --dataset letterboxd-full --data-dir data/letterboxd-full --profile full
 ```
 
-The runner trains/evaluates the lightweight hybrid baseline, PyTorch SVD, native LightGCN, TF-IDF TwoTower, tunes hybrid weights, writes dataset-scoped artifacts under `artifacts/recommender/{dataset}/`, and syncs `artifacts/recommender/latest` to the MovieLens best artifact by default.
+The runner trains/evaluates the lightweight hybrid baseline, pure TF-IDF content baseline, PyTorch SVD, native LightGCN, TF-IDF TwoTower, tunes hybrid weights, writes dataset-scoped artifacts under `artifacts/recommender/{dataset}/`, and syncs `artifacts/recommender/latest` to the MovieLens best artifact by default.
 
 ## RecBole Benchmark And Hybrid Tuning
 
@@ -209,9 +209,10 @@ Create a TMDb API key and run:
 ```bash
 export TMDB_API_KEY=your_key
 python3 scripts/enrich_tmdb.py --data-dir data/ml-latest-small --retry-empty --sleep 0.3
+python3 scripts/enrich_tmdb.py --data-dir data/letterboxd-full --retry-empty --search-missing-tmdb --refresh-empty-columns genres,keywords,director,cast,overview --sleep 0.3
 ```
 
-The enrichment script writes `enriched_movies.csv` with poster URL, overview, director, cast, and production metadata when the API is reachable.
+The enrichment script writes `enriched_movies.csv` with poster URL, overview, director, cast, genres, keywords, and production metadata when the API is reachable. For Letterboxd, `--search-missing-tmdb` resolves missing `tmdbId` from `movies.csv` title/year first and updates `links.csv`.
 For the current data policy, warm/cold split handling, TMDb keywords, Tag Genome, and benchmark dataset choices, see [docs/data_strategy.md](docs/data_strategy.md).
 
 ## Letterboxd Crawl Data
@@ -222,6 +223,7 @@ The `crawl/` folder contains an experimental Letterboxd crawler and CSV outputs 
 python3 crawl/crawl_letterboxd_movie_centric.py --resume
 python3 crawl/enrich_tmdb.py --api-key "$TMDB_API_KEY" --data-dir crawl/data/raw
 python3 scripts/prepare_letterboxd.py --raw-dir crawl/data/raw --output-dir data/letterboxd-full --source full
+python3 scripts/enrich_tmdb.py --data-dir data/letterboxd-full --retry-empty --search-missing-tmdb --sleep 0.3
 ```
 
 The prepared `letterboxd-full` dataset currently contains 6720 canonical movies, 33946 ratings, and 551 users. TMDb enrichment is skipped when `TMDB_API_KEY` is absent; placeholder metadata is still written so audits and content models can run.
