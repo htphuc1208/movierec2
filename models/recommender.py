@@ -8,6 +8,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+from scipy import sparse
 from scipy.stats import rankdata
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -52,6 +53,8 @@ class HybridMovieRecommender:
         collaborative_max_grad_norm: float = 5.0,
         collaborative_validation_ratio: float = 0.0,
         collaborative_patience: int = 6,
+        content_backend: str = "tfidf",
+        content_model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
         random_state: int = 42,
     ) -> None:
         self.alpha = alpha
@@ -72,6 +75,8 @@ class HybridMovieRecommender:
         self.collaborative_max_grad_norm = collaborative_max_grad_norm
         self.collaborative_validation_ratio = collaborative_validation_ratio
         self.collaborative_patience = collaborative_patience
+        self.content_backend = content_backend
+        self.content_model_name = content_model_name
         self.random_state = random_state
         self.movies: pd.DataFrame | None = None
         self.ratings: pd.DataFrame | None = None
@@ -88,6 +93,8 @@ class HybridMovieRecommender:
         self._global_mean: float = 0.0
         self._content_matrix: Any = None
         self._vectorizer: TfidfVectorizer | None = None
+        self._content_backend_used = "unfit"
+        self._content_from_artifact = False
         self._popularity: np.ndarray | None = None
         self._collaborative_mode = "funk_svd"
         self._collaborative_engine_used = "unfit"
@@ -136,6 +143,14 @@ class HybridMovieRecommender:
             raise FileNotFoundError(f"Missing collaborative artifact: {collaborative_path}")
 
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        content_manifest = manifest.get("content", {}) if isinstance(manifest.get("content", {}), dict) else {}
+        requested_content_backend = self.content_backend
+        manifest_content_backend = str(content_manifest.get("backend", "")).strip().lower()
+        if manifest_content_backend and manifest_content_backend != "tfidf":
+            self.content_backend = manifest_content_backend
+        else:
+            self.content_backend = requested_content_backend
+        self.content_model_name = str(content_manifest.get("model_name", self.content_model_name))
         weights = manifest.get("weights", {})
         self.alpha = float(weights.get("collaborative", self.alpha))
         self.beta = float(weights.get("content", self.beta))
@@ -165,7 +180,8 @@ class HybridMovieRecommender:
         self._collaborative_mode = str(manifest.get("collaborative", {}).get("mode", "embedding"))
         self._collaborative_engine_used = str(manifest.get("collaborative", {}).get("engine", "artifact"))
 
-        self._build_content_space()
+        if not self._load_content_artifact(artifact_path, manifest):
+            self._build_content_space()
         self._build_popularity()
 
         self.model_source = "artifact"
@@ -227,10 +243,13 @@ class HybridMovieRecommender:
                 "engine": self._collaborative_engine_used,
                 "factors": int(self._user_factors.shape[1]) if self._user_factors is not None else 0,
             },
-            "content": {"backend": "tfidf"},
             "files": {"collaborative": "collaborative.npz"},
             "metrics": metrics or self.metrics,
         }
+        content_manifest = self._export_content_artifact(path)
+        manifest["content"] = content_manifest
+        if content_manifest.get("file"):
+            manifest["files"]["content"] = content_manifest["file"]
         if extra_manifest:
             manifest.update(extra_manifest)
         (path / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
@@ -351,6 +370,9 @@ class HybridMovieRecommender:
             "positive_threshold": self.min_rating,
             "collaborative_mode": self._collaborative_mode,
             "collaborative_engine": self._collaborative_engine_used,
+            "content_backend": self._content_backend_used,
+            "content_model_name": self.content_model_name if self._content_backend_used == "sbert" else "",
+            "content_from_artifact": self._content_from_artifact,
             "metrics": self.metrics,
             "user_count": len(self.user_ids),
             "movie_count": len(self.movie_ids),
@@ -625,6 +647,9 @@ class HybridMovieRecommender:
         self._collaborative_engine_used = "numpy"
 
     def _build_content_space(self) -> None:
+        if self._content_from_artifact and self._content_matrix is not None:
+            return
+
         tag_map = self._tags_by_movie()
         text = []
         for row in self.movies.itertuples():
@@ -639,12 +664,33 @@ class HybridMovieRecommender:
                 str(getattr(row, "keywords", "")).replace("|", " "),
                 str(getattr(row, "tag_genome_tags", "")).replace("|", " "),
                 str(getattr(row, "original_language", "")),
+                str(getattr(row, "production_companies", "")).replace("|", " "),
                 str(getattr(row, "production_countries", "")).replace("|", " "),
                 str(getattr(row, "collection_name", "")),
                 str(getattr(row, "certification", "")),
                 " ".join(tag_map.get(movie_id, [])),
             ]
             text.append(" ".join(parts))
+
+        backend = str(self.content_backend or "tfidf").lower().strip()
+        if backend not in {"auto", "tfidf", "sbert"}:
+            raise ValueError("content_backend must be one of: auto, tfidf, sbert")
+
+        if backend in {"auto", "sbert"}:
+            try:
+                from .TwoTower import MetadataEncoder
+
+                encoder = MetadataEncoder(model_name=self.content_model_name, backend="sbert")
+                encoded = encoder.fit_transform(self.movies, self.tags)
+                self._content_matrix = encoded.vectors.astype(np.float32)
+                self._vectorizer = None
+                self._content_backend_used = "sbert"
+                self._content_from_artifact = False
+                return
+            except Exception:
+                if backend == "sbert":
+                    raise
+
         self._vectorizer = TfidfVectorizer(stop_words="english", ngram_range=(1, 2), min_df=2, max_df=0.85)
         try:
             self._content_matrix = self._vectorizer.fit_transform(text)
@@ -652,6 +698,8 @@ class HybridMovieRecommender:
             # Fallback for very small catalogs where min_df=2 prunes all terms
             self._vectorizer = TfidfVectorizer(stop_words="english", ngram_range=(1, 2), min_df=1)
             self._content_matrix = self._vectorizer.fit_transform(text)
+        self._content_backend_used = "tfidf"
+        self._content_from_artifact = False
 
     def _build_popularity(self) -> None:
         grouped = self.ratings.groupby("movieId")["rating"].agg(["mean", "count"])
@@ -794,6 +842,55 @@ class HybridMovieRecommender:
                 aligned[target_idx] = item_embeddings[source_idx]
         return aligned
 
+    def _load_content_artifact(self, artifact_path: Path, manifest: dict[str, Any]) -> bool:
+        files = manifest.get("files", {}) if isinstance(manifest.get("files", {}), dict) else {}
+        content_manifest = manifest.get("content", {}) if isinstance(manifest.get("content", {}), dict) else {}
+        content_file = str(files.get("content") or content_manifest.get("file") or "").strip()
+        if not content_file:
+            return False
+        artifact_backend = str(content_manifest.get("backend", "")).strip().lower()
+        requested_backend = str(self.content_backend or "tfidf").strip().lower()
+        if requested_backend in {"sbert", "auto"} and artifact_backend == "tfidf":
+            return False
+
+        content_path = artifact_path / content_file
+        if not content_path.exists():
+            return False
+
+        data = np.load(content_path, allow_pickle=False)
+        if "movie_ids" not in data or "item_vectors" not in data:
+            return False
+
+        artifact_movie_ids = data["movie_ids"].astype(np.int64).tolist()
+        item_vectors = data["item_vectors"].astype(np.float32)
+        self._content_matrix = self._align_item_embeddings(artifact_movie_ids, item_vectors)
+        self._vectorizer = None
+        self._content_backend_used = str(content_manifest.get("backend", "artifact"))
+        self._content_from_artifact = True
+        return True
+
+    def _export_content_artifact(self, path: Path) -> dict[str, Any]:
+        backend = self._content_backend_used if self._content_backend_used != "unfit" else "tfidf"
+        manifest: dict[str, Any] = {"backend": backend}
+        if backend == "sbert":
+            manifest["model_name"] = self.content_model_name
+
+        if self._content_matrix is None or sparse.issparse(self._content_matrix):
+            return manifest
+
+        item_vectors = np.asarray(self._content_matrix, dtype=np.float32)
+        if item_vectors.ndim != 2 or item_vectors.shape[0] != len(self.movie_ids):
+            return manifest
+
+        np.savez_compressed(
+            path / "content.npz",
+            movie_ids=np.asarray(self.movie_ids, dtype=np.int64),
+            item_vectors=item_vectors,
+        )
+        manifest["file"] = "content.npz"
+        manifest["factors"] = int(item_vectors.shape[1])
+        return manifest
+
     @staticmethod
     def _load_optional_vector(data: Any, name: str, size: int) -> np.ndarray:
         if name in data:
@@ -840,5 +937,5 @@ class HybridMovieRecommender:
         return value
 
     def _ensure_fit(self) -> None:
-        if self.movies is None or self.ratings is None or self._popularity is None:
+        if self.movies is None or self.ratings is None or self._popularity is None or self._content_matrix is None:
             raise RuntimeError("HybridMovieRecommender.fit must be called before inference.")

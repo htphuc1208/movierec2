@@ -6,7 +6,7 @@
 - Use train-rated items as the candidate universe for pure collaborative models such as SVD and LightGCN.
 - Use warm-item top-k metrics as the primary pure-CF benchmark. Keep all-item and cold-item metrics in the reports for transparency.
 - Keep `budget` and `revenue` as optional analysis fields only. They are not primary recommendation features.
-- Prefer content fields in this order: title, genres, overview, tagline, director, cast, TMDb keywords, MovieLens Tag Genome tags, release/language/country/franchise/certification.
+- Prefer content fields in this order: title, genres, overview, tagline, director, cast, TMDb keywords, MovieLens Tag Genome tags, production companies/country, release/language/franchise/certification.
 
 ## Enrichment
 
@@ -15,7 +15,7 @@ TMDb enrichment uses `links.csv` and each row's `tmdbId`, so it does not need ti
 Refresh rows with placeholder/empty core metadata:
 
 ```bash
-export TMDB_API_KEY=your_tmdb_v3_api_key
+export TMDB_API_KEY=your_tmdb_v3_api_key  # or set TMDB_API_KEY in .env
 
 .venv/bin/python scripts/enrich_tmdb.py \
   --data-dir data/ml-latest-small \
@@ -26,25 +26,44 @@ export TMDB_API_KEY=your_tmdb_v3_api_key
 Refresh missing keywords and the new content metadata for the whole catalog:
 
 ```bash
-export TMDB_API_KEY=your_tmdb_v3_api_key
+export TMDB_API_KEY=your_tmdb_v3_api_key  # or set TMDB_API_KEY in .env
 
 .venv/bin/python scripts/enrich_tmdb.py \
   --data-dir data/ml-latest-small \
-  --refresh-empty-columns keywords,release_date,runtime,original_language,production_countries,collection_name,certification \
+  --refresh-empty-columns keywords,release_date,runtime,original_language,production_companies,production_countries,collection_name,certification \
   --sleep 0.3
 ```
 
-If TMDb is not available, use MovieLens Tag Genome locally:
+For the full MovieLens dataset in `data/ml-latest`, create Tag Genome locally from the bundled genome files:
 
 ```bash
 .venv/bin/python scripts/prepare_tag_genome.py \
-  --data-dir data/ml-latest-small \
-  --genome-dir /path/to/tag-genome \
+  --data-dir data/ml-latest \
+  --genome-dir data/ml-latest \
   --top-n 20 \
   --min-relevance 0.35
 ```
 
-The script writes `data/ml-latest-small/tag_genome.csv`, which the dataloader automatically joins into `tag_genome_tags`.
+Then enrich missing TMDb metadata. This uses existing `links.csv` `tmdbId` values and skips rows that already have complete selected columns:
+
+```bash
+.venv/bin/python scripts/enrich_tmdb.py \
+  --data-dir data/ml-latest \
+  --refresh-empty-columns overview,director,cast,keywords,release_date,runtime,production_companies,production_countries,certification,vote_average,vote_count \
+  --sleep 0.3
+```
+
+For Letterboxd, resolve missing `tmdbId` by title/year before fetching TMDb fields:
+
+```bash
+.venv/bin/python scripts/enrich_tmdb.py \
+  --data-dir data/letterboxd-full \
+  --retry-empty \
+  --search-missing-tmdb \
+  --sleep 0.3
+```
+
+The Tag Genome script writes `tag_genome.csv`, which the dataloader automatically joins into `tag_genome_tags`.
 
 ## Benchmark Claims
 

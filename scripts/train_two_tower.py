@@ -93,6 +93,24 @@ def encode_tfidf_vectors(movies: pd.DataFrame, tags: pd.DataFrame | None, max_fe
     return l2_normalise(matrix.toarray().astype(np.float32))
 
 
+def encode_metadata_vectors(
+    movies: pd.DataFrame,
+    tags: pd.DataFrame | None,
+    backend: str,
+    max_features: int,
+    model_name: str,
+) -> tuple[np.ndarray, str]:
+    if backend == "tfidf":
+        return encode_tfidf_vectors(movies, tags, max_features), "tfidf"
+    try:
+        encoded = MetadataEncoder(model_name=model_name, backend="sbert").fit_transform(movies, tags)
+        return l2_normalise(encoded.vectors.astype(np.float32)), "sbert"
+    except Exception:
+        if backend == "sbert":
+            raise
+    return encode_tfidf_vectors(movies, tags, max_features), "tfidf"
+
+
 def l2_normalise(vectors: np.ndarray) -> np.ndarray:
     norms = np.linalg.norm(vectors, axis=1, keepdims=True)
     return vectors / np.maximum(norms, 1e-12)
@@ -233,6 +251,8 @@ def export_recommender_artifact(
     config: dict[str, Any],
     metrics: dict[str, Any],
     positive_threshold: float,
+    content_backend: str,
+    content_model_name: str,
     device,
     torch,
     weights: dict[str, float] | None = None,
@@ -254,18 +274,28 @@ def export_recommender_artifact(
         item_embeddings=item_embeddings,
         global_mean=np.asarray([0.0], dtype=np.float32),
     )
+    np.savez_compressed(
+        path / "content.npz",
+        movie_ids=np.asarray([idx_to_item[idx] for idx in range(len(idx_to_item))], dtype=np.int64),
+        item_vectors=item_features.astype(np.float32),
+    )
     manifest_weights = weights or {"collaborative": 0.55, "content": 0.35, "popularity": 0.10}
     manifest = {
         "artifact_version": 1,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "dataset": dataset_name,
-        "model_name": "two-tower-tfidf",
+        "model_name": f"two-tower-{content_backend}",
         "model_source": "pytorch_two_tower",
         "positive_threshold": positive_threshold,
         "weights": manifest_weights,
         "collaborative": {"mode": "embedding", "engine": "torch-native", "factors": int(user_embeddings.shape[1])},
-        "content": {"backend": "tfidf"},
-        "files": {"collaborative": "collaborative.npz"},
+        "content": {
+            "backend": content_backend,
+            "file": "content.npz",
+            "factors": int(item_features.shape[1]),
+            **({"model_name": content_model_name} if content_backend == "sbert" else {}),
+        },
+        "files": {"collaborative": "collaborative.npz", "content": "content.npz"},
         "metrics": {"test": metrics},
         "config": config,
     }
@@ -282,9 +312,17 @@ def train(args: argparse.Namespace) -> TwoTowerTrainingResult:
     train_df, val_df, test_df = loader.train_val_test_split(bundle.ratings)
     warm_test_df, cold_test_df = loader.split_warm_cold_items(train_df, test_df)
 
-    if args.content_backend != "tfidf":
-        raise SystemExit("scripts/train_two_tower.py currently supports --content-backend tfidf.")
-    item_vectors = encode_tfidf_vectors(bundle.movies, bundle.tags, args.max_feature_dim)
+    content_backend = str(args.content_backend).lower().strip()
+    if content_backend not in {"tfidf", "sbert", "auto"}:
+        raise SystemExit("--content-backend must be one of: tfidf, sbert, auto")
+    sbert_model_name = getattr(args, "sbert_model_name", "sentence-transformers/all-MiniLM-L6-v2")
+    item_vectors, content_backend_used = encode_metadata_vectors(
+        bundle.movies,
+        bundle.tags,
+        content_backend,
+        args.max_feature_dim,
+        sbert_model_name,
+    )
     user_to_idx, item_to_idx, idx_to_user, idx_to_item = build_id_maps(bundle.movies, train_df)
     user_features = build_user_features(train_df, item_vectors, user_to_idx, item_to_idx, args.positive_threshold)
     train_pairs = positive_pairs(train_df, user_to_idx, item_to_idx, args.positive_threshold)
@@ -403,7 +441,9 @@ def train(args: argparse.Namespace) -> TwoTowerTrainingResult:
     if args.artifact_path:
         artifact_path = Path(args.artifact_path)
         artifact_path.parent.mkdir(parents=True, exist_ok=True)
-        torch.save({"model_state_dict": model.state_dict(), "config": vars(args), "metrics": asdict(result)}, artifact_path)
+        config = dict(vars(args))
+        config["sbert_model_name"] = sbert_model_name
+        torch.save({"model_state_dict": model.state_dict(), "config": config, "metrics": asdict(result)}, artifact_path)
         artifact_path.with_suffix(".metrics.json").write_text(json.dumps(asdict(result), indent=2), encoding="utf-8")
         print(f"saved artifact: {artifact_path}")
 
@@ -417,9 +457,11 @@ def train(args: argparse.Namespace) -> TwoTowerTrainingResult:
             idx_to_user,
             idx_to_item,
             dataset_name,
-            vars(args),
+            {**vars(args), "sbert_model_name": sbert_model_name},
             asdict(result),
             args.positive_threshold,
+            content_backend_used,
+            sbert_model_name,
             device,
             torch,
             weights={"collaborative": getattr(args, 'cf_weight', 0.55), "content": getattr(args, 'content_weight', 0.35), "popularity": getattr(args, 'popularity_weight', 0.10)},
@@ -433,12 +475,13 @@ def mean(values: list[float]) -> float:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Train a TF-IDF metadata TwoTower recommender with BPR loss.")
+    parser = argparse.ArgumentParser(description="Train a metadata TwoTower recommender with BPR loss.")
     parser.add_argument("--data-dir", default="data/sample")
     parser.add_argument("--artifact-path", default="artifacts/two_tower.pt")
     parser.add_argument("--recommender-artifact-dir", default="")
     parser.add_argument("--dataset-name", default="")
-    parser.add_argument("--content-backend", choices=["tfidf"], default="tfidf")
+    parser.add_argument("--content-backend", choices=["tfidf", "sbert", "auto"], default="tfidf")
+    parser.add_argument("--sbert-model-name", default="sentence-transformers/all-MiniLM-L6-v2")
     parser.add_argument("--max-feature-dim", type=int, default=256)
     parser.add_argument("--hidden-dim", type=int, default=128)
     parser.add_argument("--output-dim", type=int, default=64)

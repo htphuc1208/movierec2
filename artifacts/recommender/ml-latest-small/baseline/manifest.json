@@ -1,6 +1,6 @@
 {
   "artifact_version": 1,
-  "created_at": "2026-06-03T04:28:45.994896+00:00",
+  "created_at": "2026-06-03T08:30:07.461983+00:00",
   "dataset": "ml-latest-small",
   "model_name": "hybrid-pytorch-svd-tfidf",
   "model_source": "runtime_fit",
@@ -23,20 +23,20 @@
   },
   "metrics": {
     "test": {
-      "precision@10": 0.02695035460992908,
-      "recall@10": 0.04752550885880182,
-      "ndcg@10": 0.044049261405181075,
-      "mrr@10": 0.08132950579759089,
-      "warm_precision@10": 0.02704626334519573,
-      "warm_recall@10": 0.04850555100089199,
-      "warm_ndcg@10": 0.044488917429862926,
-      "warm_mrr@10": 0.08161893464384568,
+      "precision@10": 0.02375886524822695,
+      "recall@10": 0.03322790441518959,
+      "ndcg@10": 0.033840030387801395,
+      "mrr@10": 0.06826381852977598,
+      "warm_precision@10": 0.023843416370106764,
+      "warm_recall@10": 0.033926885132398645,
+      "warm_ndcg@10": 0.034112970756946116,
+      "warm_mrr@10": 0.06850675026831611,
       "cold_precision@10": 0.0,
       "cold_recall@10": 0.0,
       "cold_ndcg@10": 0.0,
       "cold_mrr@10": 0.0,
-      "rating_rmse": 0.8999696373939514,
-      "rmse": 0.8999696373939514,
+      "rating_rmse": 0.9903233051300049,
+      "rmse": 0.9903233051300049,
       "warm_test_interactions": 9146.0,
       "cold_test_interactions": 947.0
     }

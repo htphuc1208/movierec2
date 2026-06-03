@@ -28,7 +28,7 @@ artifacts/recbole/*/split_summary.json
 # Keep large or generated datasets out of Git.
 # data/ml-1m/
 # data/ml-20m/
-# data/ml-latest/
+data/ml-latest/
 data/*.zip
 # crawl/data/*.zip
 # crawl/data/reprocessing/

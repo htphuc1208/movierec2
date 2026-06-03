@@ -127,14 +127,25 @@ model.recommend_similar_movies(movie_id=1, top_k=5)
 model.recommend_for_user(user_id=104, user_history=bundle.ratings, top_k=5)
 ```
 
-For SBERT experiments, install `requirements-ml.txt` and use `SBERTRecommender`. `TwoTowerModel` is also available as a small PyTorch projection layer for SBERT/user-profile vectors, but the default content runtime remains artifact-light TF-IDF. Generated vectors and similarity matrices should be saved under `artifacts/`.
+For SBERT experiments, install `requirements-ml.txt` and use `SBERTRecommender`. `scripts/train_two_tower.py` can also train a metadata Two-Tower model with precomputed SBERT vectors and export both `collaborative.npz` and `content.npz` so the API/UI can load semantic content vectors without encoding text at startup:
+
+```bash
+python3 scripts/train_two_tower.py \
+  --data-dir data/ml-latest-small \
+  --content-backend sbert \
+  --recommender-artifact-dir artifacts/recommender/ml-latest-small/two-tower-sbert \
+  --dataset-name ml-latest-small
+```
+
+The default content runtime remains artifact-light TF-IDF unless `--content-backend sbert` or an artifact with `content.npz` is provided.
 
 ## Use MovieLens Data
 
-Download MovieLens latest-small when network access is available:
+Download MovieLens latest-small for local development, or MovieLens latest full for the PDF-scale experiment:
 
 ```bash
 python3 scripts/download_movielens.py --variant ml-latest-small --output-dir data
+python3 scripts/download_movielens.py --variant ml-latest --output-dir data
 ```
 
 Then run:
@@ -164,7 +175,7 @@ python3 scripts/prepare_letterboxd.py --raw-dir crawl/data/raw --output-dir data
 python3 scripts/run_benchmark_pipeline.py --dataset letterboxd-full --data-dir data/letterboxd-full --profile full
 ```
 
-The runner trains/evaluates the lightweight hybrid baseline, pure TF-IDF content baseline, PyTorch SVD, native LightGCN, TF-IDF TwoTower, tunes hybrid weights, writes dataset-scoped artifacts under `artifacts/recommender/{dataset}/`, and syncs `artifacts/recommender/latest` to the MovieLens best artifact by default.
+The runner trains/evaluates the lightweight hybrid baseline, pure TF-IDF content baseline, PyTorch SVD, native LightGCN, metadata TwoTower, tunes hybrid weights, writes dataset-scoped artifacts under `artifacts/recommender/{dataset}/`, and syncs `artifacts/recommender/latest` to the MovieLens best artifact by default. Use `--content-backend sbert` to tune LightGCN/SVD/BPR collaborative artifacts against SBERT content vectors instead of TF-IDF.
 
 ## RecBole Benchmark And Hybrid Tuning
 
@@ -192,7 +203,18 @@ python3 scripts/train_lightgcn.py \
   --dataset-name ml-latest-small
 ```
 
-The exported recommender artifact stores final LightGCN embeddings in the same `manifest.json` plus `collaborative.npz` format used by the API/UI.
+The exported recommender artifact stores final LightGCN embeddings in the same `manifest.json` plus `collaborative.npz` format used by the API/UI. It supports `--loss bpr` and `--loss warp`; WARP uses sampled violating negatives for top-heavy ranking optimization. To build the PDF-style LightGCN + SBERT hybrid, first export LightGCN, then tune it with SBERT content:
+
+```bash
+python3 scripts/tune_hybrid.py \
+  --data-dir data/ml-latest-small \
+  --cf-model LightGCN \
+  --cf-artifact-dir artifacts/recommender/lightgcn-ml-latest-small \
+  --content-backend sbert \
+  --output-dir artifacts/recommender/ml-latest-small/hybrid-lightgcn-sbert
+```
+
+For MovieLens latest full training on Kaggle, including WARP and SBERT commands, see [docs/kaggle_training.md](docs/kaggle_training.md).
 
 For the MovieLens 1M `.dat` format, place `movies.dat`, `ratings.dat`, and `users.dat` in `data/raw`, then run:
 
@@ -204,15 +226,16 @@ Processed CSV files are written to `data/processed` and are ignored by Git.
 
 ## Optional TMDb Enrichment
 
-Create a TMDb API key and run:
+Create a TMDb API key, put `TMDB_API_KEY=...` in `.env` or export it, then run:
 
 ```bash
 export TMDB_API_KEY=your_key
-python3 scripts/enrich_tmdb.py --data-dir data/ml-latest-small --retry-empty --sleep 0.3
-python3 scripts/enrich_tmdb.py --data-dir data/letterboxd-full --retry-empty --search-missing-tmdb --refresh-empty-columns genres,keywords,director,cast,overview --sleep 0.3
+python3 scripts/prepare_tag_genome.py --data-dir data/ml-latest --genome-dir data/ml-latest --top-n 20 --min-relevance 0.35
+python3 scripts/enrich_tmdb.py --data-dir data/ml-latest --refresh-empty-columns overview,director,cast,keywords,release_date,runtime,production_companies,production_countries,certification,vote_average,vote_count --sleep 0.3
+python3 scripts/enrich_tmdb.py --data-dir data/letterboxd-full --retry-empty --search-missing-tmdb --sleep 0.3
 ```
 
-The enrichment script writes `enriched_movies.csv` with poster URL, overview, director, cast, genres, keywords, and production metadata when the API is reachable. For Letterboxd, `--search-missing-tmdb` resolves missing `tmdbId` from `movies.csv` title/year first and updates `links.csv`.
+The enrichment script writes `enriched_movies.csv` with poster URL, overview, director, cast, genres, keywords, production companies/countries, runtime, certification, and TMDb vote metadata when the API is reachable. For Letterboxd, `--search-missing-tmdb` resolves missing `tmdbId` from `movies.csv` title/year first and updates `links.csv`.
 For the current data policy, warm/cold split handling, TMDb keywords, Tag Genome, and benchmark dataset choices, see [docs/data_strategy.md](docs/data_strategy.md).
 
 ## Letterboxd Crawl Data

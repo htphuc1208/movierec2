@@ -38,6 +38,7 @@ class MovieLensDataLoaderTest(unittest.TestCase):
                     "genres": ["Action|Sci-Fi"],
                     "release_date": ["2018-03-29"],
                     "overview": ["x"],
+                    "production_companies": ["Warner Bros."],
                 }
             ).to_csv(path / "enriched_movies.csv", index=False)
 
@@ -47,6 +48,7 @@ class MovieLensDataLoaderTest(unittest.TestCase):
             self.assertEqual(str(by_id.loc[1, "year"]), "2006")
             self.assertEqual(by_id.loc[2, "genres"], "Action|Sci-Fi")
             self.assertEqual(str(by_id.loc[2, "year"]), "2018")
+            self.assertEqual(by_id.loc[2, "production_companies"], "Warner Bros.")
 
     def test_warm_cold_split_and_tag_genome_features(self) -> None:
         with TemporaryDirectory() as temp_dir:

@@ -10,6 +10,7 @@ from tqdm import tqdm
 
 URLS = {
     "ml-latest-small": "https://files.grouplens.org/datasets/movielens/ml-latest-small.zip",
+    "ml-latest": "https://files.grouplens.org/datasets/movielens/ml-latest.zip",
     "ml-1m": "https://files.grouplens.org/datasets/movielens/ml-1m.zip",
 }
 

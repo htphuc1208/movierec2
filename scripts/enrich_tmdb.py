@@ -11,6 +11,15 @@ import pandas as pd
 import requests
 from tqdm import tqdm
 
+try:
+    from dotenv import load_dotenv
+except ImportError:  # pragma: no cover - optional convenience dependency
+    load_dotenv = None
+
+
+if load_dotenv is not None:
+    load_dotenv()
+
 
 TMDB_API = "https://api.themoviedb.org/3/movie/{tmdb_id}"
 TMDB_SEARCH = "https://api.themoviedb.org/3/search/movie"
@@ -39,6 +48,7 @@ ENRICHED_COLUMNS = [
     "release_date",
     "runtime",
     "original_language",
+    "production_companies",
     "production_countries",
     "keywords",
     "vote_average",
@@ -94,6 +104,7 @@ def fetch_movie(
             cast = payload.get("credits", {}).get("cast", [])
             genres = payload.get("genres", [])
             keywords = payload.get("keywords", {}).get("keywords", [])
+            production_companies = payload.get("production_companies", [])
             production_countries = payload.get("production_countries", [])
             collection = payload.get("belongs_to_collection") or {}
 
@@ -118,6 +129,7 @@ def fetch_movie(
                 "release_date": payload.get("release_date", ""),
                 "runtime": payload.get("runtime", 0) or 0,
                 "original_language": payload.get("original_language", ""),
+                "production_companies": pipe_names(production_companies),
                 "production_countries": pipe_names(production_countries, key="iso_3166_1"),
                 "keywords": pipe_names(keywords),
                 "vote_average": payload.get("vote_average", 0) or 0,

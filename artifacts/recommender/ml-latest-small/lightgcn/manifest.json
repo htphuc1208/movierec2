@@ -1,6 +1,6 @@
 {
   "artifact_version": 1,
-  "created_at": "2026-06-03T04:29:24.979606+00:00",
+  "created_at": "2026-06-03T08:30:46.019323+00:00",
   "dataset": "ml-latest-small",
   "model_name": "lightgcn-pytorch",
   "model_source": "pytorch_lightgcn",
@@ -24,16 +24,16 @@
   },
   "metrics": {
     "test": {
-      "train_loss": 0.2402196771059281,
-      "val_loss": 0.39199064373970033,
+      "train_loss": 0.23215351425684416,
+      "val_loss": 0.3937231719493866,
       "precision_at_k": 0.026512455516014236,
-      "recall_at_k": 0.046284190134162025,
-      "ndcg_at_k": 0.04488952864837473,
-      "mrr_at_k": 0.08572275885443145,
+      "recall_at_k": 0.046552654890358564,
+      "ndcg_at_k": 0.044951973386755086,
+      "mrr_at_k": 0.085662034683387,
       "all_precision_at_k": 0.026418439716312057,
-      "all_recall_at_k": 0.04586701778455716,
-      "all_ndcg_at_k": 0.04471863904219621,
-      "all_mrr_at_k": 0.08541877744005404,
+      "all_recall_at_k": 0.04583478051827734,
+      "all_ndcg_at_k": 0.0447071259741433,
+      "all_mrr_at_k": 0.08535826860294946,
       "cold_precision_at_k": 0.0,
       "cold_recall_at_k": 0.0,
       "cold_ndcg_at_k": 0.0,
@@ -43,7 +43,7 @@
       "cold_test_interactions": 947,
       "warm_test_interactions": 9146,
       "cold_positive_interactions": 359,
-      "best_epoch": 6
+      "best_epoch": 7
     }
   },
   "config": {
@@ -64,6 +64,9 @@
     "positive_threshold": 4.0,
     "seed": 42,
     "device": "",
-    "verbose": false
+    "verbose": false,
+    "cf_weight": 0.55,
+    "content_weight": 0.35,
+    "popularity_weight": 0.1
   }
 }

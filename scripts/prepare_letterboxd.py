@@ -25,6 +25,7 @@ PLACEHOLDER_METADATA_COLUMNS = [
     "release_date",
     "runtime",
     "original_language",
+    "production_companies",
     "production_countries",
     "keywords",
     "vote_average",

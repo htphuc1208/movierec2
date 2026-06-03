@@ -126,12 +126,12 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
             rows.append(
                 leaderboard_row(
                     dataset=dataset,
-                    model="two-tower-tfidf",
+                    model=f"two-tower-{args.content_backend}",
                     model_family="two_tower",
                     source="pytorch_two_tower",
                     metrics=asdict(result),
                     artifact_dir=str(artifact_dir),
-                    command=f"scripts/train_two_tower.py --data-dir {data_dir}",
+                    command=f"scripts/train_two_tower.py --data-dir {data_dir} --content-backend {args.content_backend}",
                 )
             )
             completed.append("two_tower")
@@ -210,23 +210,26 @@ def tune_available_artifacts(args: argparse.Namespace, data_dir: Path, scoped_ro
     for name, artifact_dir in candidates.items():
         if not (artifact_dir / "manifest.json").exists():
             continue
-        output_dir = scoped_root / f"hybrid-{name.lower()}-tfidf"
+        output_dir = scoped_root / f"hybrid-{name.lower()}-{args.content_backend}"
         tune_args = SimpleNamespace(
             data_dir=str(data_dir),
             dataset_name=args.dataset,
             cf_model=name,
             cf_artifact_dir=str(artifact_dir),
             artifact_root=str(scoped_root),
-            content_backend="tfidf",
+            content_backend=args.content_backend,
+            sbert_model_name=args.sbert_model_name,
             output_dir=str(output_dir),
             top_k=args.top_k,
             positive_threshold=args.positive_threshold,
+            eval_user_limit=args.eval_user_limit,
+            seed=args.seed,
         )
         result = tune_hybrid(tune_args)
         rows.append(
             leaderboard_row(
                 dataset=args.dataset,
-                model=f"hybrid-{name.lower()}-tfidf",
+                model=f"hybrid-{name.lower()}-{result.get('content_backend', args.content_backend)}",
                 model_family="hybrid",
                 source="tuned_hybrid",
                 metrics={
@@ -235,7 +238,7 @@ def tune_available_artifacts(args: argparse.Namespace, data_dir: Path, scoped_ro
                 },
                 artifact_dir=str(output_dir),
                 tuned_weights=result.get("weights", {}),
-                command=f"scripts/tune_hybrid.py --data-dir {data_dir} --cf-artifact-dir {artifact_dir}",
+                command=f"scripts/tune_hybrid.py --data-dir {data_dir} --cf-artifact-dir {artifact_dir} --content-backend {args.content_backend}",
             )
         )
     return rows
@@ -270,6 +273,8 @@ def default_svd_args(args: argparse.Namespace, data_dir: Path, artifact_path: Pa
         patience=2 if smoke else 8,
         top_k=args.top_k,
         positive_threshold=args.positive_threshold,
+        max_train_pairs=args.max_train_pairs,
+        eval_user_limit=args.eval_user_limit,
         seed=args.seed,
         device=args.device,
         verbose=args.verbose,
@@ -291,6 +296,9 @@ def default_lightgcn_args(args: argparse.Namespace, data_dir: Path, artifact_pat
         epochs=2 if smoke else 50,
         batch_size=512 if smoke else 1024,
         lr=0.001,
+        loss=args.lightgcn_loss,
+        warp_margin=args.warp_margin,
+        warp_max_trials=args.warp_max_trials,
         weight_decay=1e-5,
         l2_reg=0.0,
         max_grad_norm=5.0,
@@ -313,7 +321,8 @@ def default_two_tower_args(args: argparse.Namespace, data_dir: Path, artifact_pa
         artifact_path=str(artifact_path),
         recommender_artifact_dir=str(recommender_artifact_dir),
         dataset_name=args.dataset,
-        content_backend="tfidf",
+        content_backend=args.content_backend,
+        sbert_model_name=args.sbert_model_name,
         max_feature_dim=32 if smoke else 256,
         hidden_dim=32 if smoke else 128,
         output_dim=16 if smoke else 64,
@@ -378,6 +387,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--models", default="baseline,content,svd,lightgcn,two_tower,tune,recbole")
     parser.add_argument("--top-k", type=int, default=10)
     parser.add_argument("--positive-threshold", type=float, default=DEFAULT_POSITIVE_THRESHOLD)
+    parser.add_argument("--content-backend", choices=["tfidf", "sbert", "auto"], default="tfidf")
+    parser.add_argument("--sbert-model-name", default="sentence-transformers/all-MiniLM-L6-v2")
+    parser.add_argument("--lightgcn-loss", choices=["bpr", "warp"], default="bpr")
+    parser.add_argument("--warp-margin", type=float, default=1.0)
+    parser.add_argument("--warp-max-trials", type=int, default=20)
+    parser.add_argument("--max-train-pairs", type=int, default=0)
+    parser.add_argument("--eval-user-limit", type=int, default=0)
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
     parser.add_argument("--device", default="")
     parser.add_argument("--artifact-root", default="artifacts/recommender")

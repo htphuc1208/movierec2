@@ -4,9 +4,15 @@
   "protocol": "per_user_temporal_80_10_10_pos4_full",
   "profile": "full",
   "completed": [
+    "data_audit",
     "recbole_atomic_split",
+    "baseline",
     "content",
-    "recbole_report"
+    "svd",
+    "lightgcn",
+    "two_tower",
+    "recbole_report",
+    "tune"
   ],
   "skipped": {},
   "leaderboard": "artifacts/leaderboards/ml-latest-small.csv"

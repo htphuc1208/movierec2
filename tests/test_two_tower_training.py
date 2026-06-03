@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -43,9 +44,14 @@ class TwoTowerTrainingSmokeTest(unittest.TestCase):
             )
             result = train(args)
             self.assertGreaterEqual(result.all_ndcg_at_k, 0.0)
+            self.assertTrue((root / "recommender" / "content.npz").exists())
+            manifest = json.loads((root / "recommender" / "manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(manifest["content"]["backend"], "tfidf")
+            self.assertEqual(manifest["files"]["content"], "content.npz")
 
             bundle = MovieLensDataLoader("data/sample").load()
             loaded = HybridMovieRecommender.from_artifact(root / "recommender", bundle.movies, bundle.ratings, bundle.tags)
+            self.assertTrue(loaded.model_info()["content_from_artifact"])
             recs = loaded.recommend(user_id=104, top_k=3)
             self.assertEqual(len(recs), 3)
 

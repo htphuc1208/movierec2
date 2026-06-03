@@ -96,9 +96,11 @@ ENRICHED_FIELDS = [
     "directors",         # pipe-separated names
     "top_cast",          # pipe-separated, tối đa 10 diễn viên chính
     "keywords",          # pipe-separated keyword names
+    "production_companies", # pipe-separated production company names
     "production_countries", # pipe-separated ISO codes: US|FR|JP
     "collection_id",     # nếu thuộc franchise (Marvel, HP...)
     "collection_name",
+    "certification",     # US movie certification from release_dates
     "adult",             # true/false
     "imdb_id",           # tt1234567
     # --- Meta của enrich ---
@@ -308,6 +310,18 @@ def pipe(items: List[str]) -> str:
     return "|".join(i for i in items if i)
 
 
+def certification_from_release_dates(raw: Dict, country: str = "US") -> str:
+    results = raw.get("release_dates", {}).get("results", [])
+    country_release = next((item for item in results if item.get("iso_3166_1") == country), None)
+    if not country_release:
+        return ""
+    for release in country_release.get("release_dates", []):
+        certification = str(release.get("certification", "")).strip()
+        if certification:
+            return certification
+    return ""
+
+
 def parse_details(raw: Dict) -> Dict:
     """Extract các field cần thiết từ TMDB movie detail response."""
     # Genres
@@ -326,6 +340,7 @@ def parse_details(raw: Dict) -> Dict:
     keywords = pipe([k.get("name", "") for k in kw_list[:30]])  # tối đa 30
 
     # Production countries
+    companies = pipe([c.get("name", "") for c in raw.get("production_companies", [])])
     countries = pipe([c.get("iso_3166_1", "") for c in raw.get("production_countries", [])])
 
     # Collection
@@ -354,9 +369,11 @@ def parse_details(raw: Dict) -> Dict:
         "directors": directors,
         "top_cast": top_cast,
         "keywords": keywords,
+        "production_companies": companies,
         "production_countries": countries,
         "collection_id": collection_id,
         "collection_name": collection_name,
+        "certification": certification_from_release_dates(raw),
         "adult": str(raw.get("adult", False)).lower(),
         "imdb_id": raw.get("imdb_id") or "",
     }

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import random
 import sys
 from pathlib import Path
 from typing import Any
@@ -42,6 +43,16 @@ def relevant_by_user(frame: pd.DataFrame, positive_threshold: float) -> dict[int
     positives = frame.loc[frame["rating"] >= positive_threshold]
     grouped = positives.groupby("userId")["movieId"].apply(lambda values: set(int(value) for value in values))
     return {int(user_id): values for user_id, values in grouped.items()}
+
+
+def limit_holdout_users(frame: pd.DataFrame, positive_threshold: float, limit: int, seed: int) -> pd.DataFrame:
+    if limit <= 0:
+        return frame
+    relevant = relevant_by_user(frame, positive_threshold)
+    if len(relevant) <= limit:
+        return frame
+    selected = set(random.Random(seed).sample(sorted(relevant), limit))
+    return frame.loc[frame["userId"].astype(int).isin(selected)].copy()
 
 
 def build_component_cache(
@@ -117,7 +128,11 @@ def evaluate_rating_rmse(model: HybridMovieRecommender, holdout: pd.DataFrame) -
 
 
 def build_model(args: argparse.Namespace, bundle: Any, train: pd.DataFrame) -> HybridMovieRecommender:
-    model = HybridMovieRecommender(min_rating=args.positive_threshold)
+    model = HybridMovieRecommender(
+        min_rating=args.positive_threshold,
+        content_backend=args.content_backend,
+        content_model_name=getattr(args, "sbert_model_name", "sentence-transformers/all-MiniLM-L6-v2"),
+    )
     artifact_dir = Path(args.cf_artifact_dir) if args.cf_artifact_dir else Path(args.artifact_root) / f"recbole-{args.cf_model.lower()}"
     if artifact_dir.exists() and (artifact_dir / "manifest.json").exists():
         try:
@@ -131,6 +146,10 @@ def tune(args: argparse.Namespace) -> dict[str, Any]:
     loader = MovieLensDataLoader(args.data_dir)
     bundle = loader.load()
     train, val, test = loader.train_val_test_split(bundle.ratings)
+    eval_user_limit = int(getattr(args, "eval_user_limit", 0))
+    seed = int(getattr(args, "seed", 42))
+    val = limit_holdout_users(val, args.positive_threshold, eval_user_limit, seed)
+    test = limit_holdout_users(test, args.positive_threshold, eval_user_limit, seed + 1)
     warm_val, cold_val = loader.split_warm_cold_items(train, val)
     warm_test, cold_test = loader.split_warm_cold_items(train, test)
     model = build_model(args, bundle, train)
@@ -161,10 +180,12 @@ def tune(args: argparse.Namespace) -> dict[str, Any]:
     cold_test_metrics = evaluate_top_k(model, cold_test, args.top_k, args.positive_threshold, best_weights, component_cache)
     test_metrics["rmse"] = evaluate_rating_rmse(model, test)
     dataset_name = args.dataset_name or dataset_name_from_dir(args.data_dir)
+    model_info = model.model_info()
+    content_backend_used = str(model_info.get("content_backend", args.content_backend))
     result = {
         "dataset": dataset_name,
         "cf_model": args.cf_model,
-        "content_backend": args.content_backend,
+        "content_backend": content_backend_used,
         "weights": {
             "collaborative": best_weights[0],
             "content": best_weights[1],
@@ -182,14 +203,14 @@ def tune(args: argparse.Namespace) -> dict[str, Any]:
             "warm": warm_test_metrics,
             "cold": cold_test_metrics,
         },
-        "model_info": model.model_info(),
+        "model_info": model_info,
     }
 
     output_dir = Path(args.output_dir)
     manifest = model.save_artifact(
         output_dir,
         dataset_name=dataset_name,
-        model_name=f"hybrid-{args.cf_model.lower()}-{args.content_backend}",
+        model_name=f"hybrid-{args.cf_model.lower()}-{content_backend_used}",
         metrics={
             "validation": best_metrics,
             "test": test_metrics,
@@ -222,10 +243,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--cf-model", default="LightGCN")
     parser.add_argument("--cf-artifact-dir", default="")
     parser.add_argument("--artifact-root", default="artifacts/recommender")
-    parser.add_argument("--content-backend", choices=["tfidf", "sbert"], default="tfidf")
+    parser.add_argument("--content-backend", choices=["tfidf", "sbert", "auto"], default="tfidf")
+    parser.add_argument("--sbert-model-name", default="sentence-transformers/all-MiniLM-L6-v2")
     parser.add_argument("--output-dir", default="artifacts/recommender/latest")
     parser.add_argument("--top-k", type=int, default=10)
     parser.add_argument("--positive-threshold", type=float, default=4.0)
+    parser.add_argument("--eval-user-limit", type=int, default=0)
+    parser.add_argument("--seed", type=int, default=42)
     return parser.parse_args()
 
 

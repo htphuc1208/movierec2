@@ -10,6 +10,7 @@ OPTIONAL_TEXT_METADATA_COLUMNS = [
     "keywords",
     "tag_genome_tags",
     "original_language",
+    "production_companies",
     "production_countries",
     "collection_name",
     "release_date",
@@ -48,7 +49,7 @@ class MovieLensDataLoader:
         )
 
     def load_movies(self) -> pd.DataFrame:
-        movies = self._read_required_csv("movies.csv")
+        movies = self._read_required_csv("movies.csv", dtype={"movieId": "int32"})
         movies["movieId"] = movies["movieId"].astype(int)
         movies["title"] = movies["title"].astype(str)
         movies["genres"] = movies["genres"].fillna("").astype(str)
@@ -58,7 +59,7 @@ class MovieLensDataLoader:
 
         links_path = self.data_dir / "links.csv"
         if links_path.exists():
-            links = pd.read_csv(links_path)
+            links = pd.read_csv(links_path, dtype={"movieId": "int32"})
             links["movieId"] = links["movieId"].astype(int)
             movies = movies.merge(links, on="movieId", how="left")
 
@@ -128,10 +129,18 @@ class MovieLensDataLoader:
         return movies
 
     def load_ratings(self) -> pd.DataFrame:
-        ratings = self._read_required_csv("ratings.csv")
+        ratings = self._read_required_csv(
+            "ratings.csv",
+            dtype={
+                "userId": "int32",
+                "movieId": "int32",
+                "rating": "float32",
+                "timestamp": "int64",
+            },
+        )
         ratings["userId"] = ratings["userId"].astype(int)
         ratings["movieId"] = ratings["movieId"].astype(int)
-        ratings["rating"] = ratings["rating"].astype(float)
+        ratings["rating"] = ratings["rating"].astype("float32")
         if "timestamp" not in ratings.columns:
             ratings["timestamp"] = range(len(ratings))
         return ratings
@@ -140,7 +149,7 @@ class MovieLensDataLoader:
         path = self.data_dir / "tags.csv"
         if not path.exists():
             return pd.DataFrame(columns=["userId", "movieId", "tag", "timestamp"])
-        tags = pd.read_csv(path)
+        tags = pd.read_csv(path, dtype={"userId": "int32", "movieId": "int32"})
         if tags.empty:
             return pd.DataFrame(columns=["userId", "movieId", "tag", "timestamp"])
         tags["movieId"] = tags["movieId"].astype(int)
@@ -151,7 +160,7 @@ class MovieLensDataLoader:
         path = self.data_dir / "links.csv"
         if not path.exists():
             return pd.DataFrame(columns=["movieId", "imdbId", "tmdbId"])
-        links = pd.read_csv(path)
+        links = pd.read_csv(path, dtype={"movieId": "int32"})
         links["movieId"] = links["movieId"].astype(int)
         return links
 
@@ -216,11 +225,11 @@ class MovieLensDataLoader:
             joined = ", ".join(missing)
             raise ValueError(f"{source} is missing required columns: {joined}")
 
-    def _read_required_csv(self, filename: str) -> pd.DataFrame:
+    def _read_required_csv(self, filename: str, **kwargs: object) -> pd.DataFrame:
         path = self.data_dir / filename
         if not path.exists():
             raise FileNotFoundError(f"Missing required data file: {path}")
-        return pd.read_csv(path)
+        return pd.read_csv(path, **kwargs)
 
     def _merge_tag_genome(self, movies: pd.DataFrame) -> pd.DataFrame:
         tag_genome_path = self.data_dir / "tag_genome.csv"

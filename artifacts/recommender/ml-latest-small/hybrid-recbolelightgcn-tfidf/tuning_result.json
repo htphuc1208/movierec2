@@ -3,35 +3,35 @@
   "cf_model": "RecBoleLightGCN",
   "content_backend": "tfidf",
   "weights": {
-    "collaborative": 0.37499999999999994,
-    "content": 0.5625,
-    "popularity": 0.0625
+    "collaborative": 0.7142857142857143,
+    "content": 0.14285714285714285,
+    "popularity": 0.14285714285714285
   },
   "validation": {
-    "precision@10": 0.0448581560283688,
-    "recall@10": 0.0836033482268906,
-    "ndcg@10": 0.07674448912654248,
-    "mrr@10": 0.14146051446583363
+    "precision@10": 0.04113475177304964,
+    "recall@10": 0.07010018998300467,
+    "ndcg@10": 0.06979459380285108,
+    "mrr@10": 0.13295480130586512
   },
   "validation_segments": {
     "warm_interactions": 9344,
     "cold_interactions": 749
   },
   "test": {
-    "precision@10": 0.03351063829787235,
-    "recall@10": 0.05756631505036966,
-    "ndcg@10": 0.051644008618287815,
-    "mrr@10": 0.09066475289879544,
-    "rmse": 1.796669363975525
+    "precision@10": 0.03333333333333333,
+    "recall@10": 0.05578432059132007,
+    "ndcg@10": 0.04964578417701834,
+    "mrr@10": 0.09081461780929866,
+    "rmse": 1.5666486024856567
   },
   "test_segments": {
     "warm_interactions": 9146,
     "cold_interactions": 947,
     "warm": {
-      "precision@10": 0.03362989323843417,
-      "recall@10": 0.058430172607284295,
-      "ndcg@10": 0.05205772909194886,
-      "mrr@10": 0.09098740326498334
+      "precision@10": 0.03345195729537367,
+      "recall@10": 0.056647595468838775,
+      "ndcg@10": 0.050051198818809366,
+      "mrr@10": 0.09113780150257018
     },
     "cold": {
       "precision@10": 0.0,
@@ -46,9 +46,9 @@
     "dataset": "ml-latest-small",
     "artifact_path": "artifacts/recommender/ml-latest-small/recbole-lightgcn",
     "weights": {
-      "collaborative": 0.37499999999999994,
-      "content": 0.5625,
-      "popularity": 0.0625
+      "collaborative": 0.7142857142857143,
+      "content": 0.14285714285714285,
+      "popularity": 0.14285714285714285
     },
     "positive_threshold": 4.0,
     "collaborative_mode": "embedding",
@@ -69,15 +69,15 @@
   "artifact_dir": "artifacts/recommender/ml-latest-small/hybrid-recbolelightgcn-tfidf",
   "manifest": {
     "artifact_version": 1,
-    "created_at": "2026-06-03T06:04:52.874120+00:00",
+    "created_at": "2026-06-03T08:34:02.469585+00:00",
     "dataset": "ml-latest-small",
     "model_name": "hybrid-recbolelightgcn-tfidf",
     "model_source": "artifact",
     "positive_threshold": 4.0,
     "weights": {
-      "collaborative": 0.37499999999999994,
-      "content": 0.5625,
-      "popularity": 0.0625
+      "collaborative": 0.7142857142857143,
+      "content": 0.14285714285714285,
+      "popularity": 0.14285714285714285
     },
     "collaborative": {
       "mode": "embedding",
@@ -92,26 +92,26 @@
     },
     "metrics": {
       "validation": {
-        "precision@10": 0.0448581560283688,
-        "recall@10": 0.0836033482268906,
-        "ndcg@10": 0.07674448912654248,
-        "mrr@10": 0.14146051446583363
+        "precision@10": 0.04113475177304964,
+        "recall@10": 0.07010018998300467,
+        "ndcg@10": 0.06979459380285108,
+        "mrr@10": 0.13295480130586512
       },
       "test": {
-        "precision@10": 0.03351063829787235,
-        "recall@10": 0.05756631505036966,
-        "ndcg@10": 0.051644008618287815,
-        "mrr@10": 0.09066475289879544,
-        "rmse": 1.796669363975525
+        "precision@10": 0.03333333333333333,
+        "recall@10": 0.05578432059132007,
+        "ndcg@10": 0.04964578417701834,
+        "mrr@10": 0.09081461780929866,
+        "rmse": 1.5666486024856567
       },
       "test_segments": {
         "warm_interactions": 9146,
         "cold_interactions": 947,
         "warm": {
-          "precision@10": 0.03362989323843417,
-          "recall@10": 0.058430172607284295,
-          "ndcg@10": 0.05205772909194886,
-          "mrr@10": 0.09098740326498334
+          "precision@10": 0.03345195729537367,
+          "recall@10": 0.056647595468838775,
+          "ndcg@10": 0.050051198818809366,
+          "mrr@10": 0.09113780150257018
         },
         "cold": {
           "precision@10": 0.0,
