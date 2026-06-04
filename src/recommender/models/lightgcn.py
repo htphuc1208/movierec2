@@ -18,25 +18,33 @@ def _require_torch():
         raise ImportError("LightGCN requires torch. Install requirements.txt first.")
     return torch
 
-
+# tao ma tran ke chuan hoa A~ = D^-0.5 @ A @ D^-0.5, trong do D la ma tran bac cua A
 def build_normalized_adj(num_users: int, num_items: int, edges: np.ndarray, device: str = "cpu"):
     """Build the normalized bipartite adjacency matrix used by LightGCN."""
+    
+    # edges la ma tran 2 cot [user_idx, item_idx] voi item_idx da duoc 
+    # dich chuyen de khong trung voi user_idx
     torch_mod = _require_torch()
     if edges.size == 0:
         raise ValueError("LightGCN needs at least one training edge")
 
     user_nodes = torch_mod.as_tensor(edges[:, 0], dtype=torch_mod.long, device=device)
     item_nodes = torch_mod.as_tensor(edges[:, 1] + num_users, dtype=torch_mod.long, device=device)
+    # row dai dien cho tat ca cac nut nguon, cat = concat
+    # col dai dien cho tat ca cac nut dich, cat = concat
     row = torch_mod.cat([user_nodes, item_nodes])
     col = torch_mod.cat([item_nodes, user_nodes])
+    # values la vector 1 voi do dai bang so luong canh, gia tri 1 dai dien cho moi canh
     values = torch_mod.ones(row.shape[0], dtype=torch_mod.float32, device=device)
 
     num_nodes = num_users + num_items
+    # tinh bac cua tung nut: D[k] = sum_{i} A[i,k], voi A[i,k] = 1 neu co canh i-k, 0 neu khong
     degree = torch_mod.zeros(num_nodes, dtype=torch_mod.float32, device=device)
     degree.index_add_(0, row, values)
+    # tinh he so chuan hoa cho tung canh: norm[i] * norm[j] voi i,j la 2 dau canh, norm[k] = D[k]^-0.5
     norm = torch_mod.pow(degree.clamp_min(1.0), -0.5)
     norm_values = norm[row] * values * norm[col]
-
+    # tao ma tran ke chuan hoa dang COO sparse tensor voi indices = [row, col], values = norm_values, shape = (num_nodes, num_nodes)
     indices = torch_mod.stack([row, col])
     return torch_mod.sparse_coo_tensor(indices, norm_values, (num_nodes, num_nodes), device=device).coalesce()
 
@@ -48,7 +56,7 @@ if torch is None:
             _require_torch()
 
 else:
-
+    # Minimal LightGCN implementation with user/item ID embeddings and sparse propagation.
     class LightGCNModel(nn.Module):
         """Minimal LightGCN with ID embeddings and sparse propagation."""
 
@@ -74,12 +82,18 @@ else:
         def propagate(self):
             if self.adjacency is None:
                 raise ValueError("LightGCNModel.adjacency must be set before forward propagation")
+            # concatenate user and item embeddings to shape (num_users + num_items, embedding_dim)
             all_embeddings = torch.cat([self.user_embedding.weight, self.item_embedding.weight], dim=0)
+            # embeddings_per_layer la danh sach cac embedding tai moi lop
             embeddings_per_layer = [all_embeddings]
             current = all_embeddings
             for _ in range(self.num_layers):
+                # propagate embeddings qua ma tran ke chuan hoa: current = A~ @ current, 
+                # voi A~ la ma tran ke chuan hoa da duoc tinh truoc
                 current = torch.sparse.mm(self.adjacency, current)
                 embeddings_per_layer.append(current)
+            # trung binh cac embedding tai cac lop de duoc embedding cuoi cung, 
+            # sau do tach lai thanh user va item embeddings
             final = torch.stack(embeddings_per_layer, dim=0).mean(dim=0)
             return torch.split(final, [self.num_users, self.num_items], dim=0)
 
@@ -87,6 +101,8 @@ else:
             user_embeddings, item_embeddings = self.propagate()
             selected_users = user_embeddings[users]
             selected_items = item_embeddings[items]
+            # score la tich vo huong giua embedding nguoi dung va san pham: 
+            # score[u,i] = <embedding_user[u], embedding_item[i]>
             return (selected_users * selected_items).sum(dim=-1)
 
         def score_all_items(self, users):
@@ -117,6 +133,7 @@ def train_lightgcn_bpr(
     losses: list[float] = []
 
     for _ in range(epochs):
+        # sample_bpr_triplets tra ve 3 vector: users, positives, negatives, moi vector co do dai bang samples_per_epoch
         users, positives, negatives = sample_bpr_triplets(user_positive_items, num_items, samples_per_epoch, rng)
         epoch_losses: list[float] = []
         order = rng.permutation(len(users))
@@ -127,8 +144,12 @@ def train_lightgcn_bpr(
             batch_neg = torch_mod.as_tensor(negatives[idx], dtype=torch_mod.long, device=device)
 
             optimizer.zero_grad()
+            # score la tich vo huong giua embedding nguoi dung va san pham: 
+            # score[u,i] = <embedding_user[u], embedding_item[i]>
             pos_scores = model(batch_users, batch_pos)
             neg_scores = model(batch_users, batch_neg)
+            # l2 regularization tren embedding nguoi dung va san pham 
+            # trong batch, chia cho kich thuoc batch de co do on dinh hon
             reg = (
                 model.user_embedding(batch_users).norm(2).pow(2)
                 + model.item_embedding(batch_pos).norm(2).pow(2)

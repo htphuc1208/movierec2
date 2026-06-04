@@ -177,3 +177,97 @@ Nếu môi trường chưa cài torch hoặc fastapi, các test tương ứng s�
     zip -r artifacts.zip artifacts
 
 Sau đó giải nén vào repo local và chạy API/UI.
+
+
+11. Chạy riêng bước enrich TMDb trên Kaggle
+-------------------------------------------
+Khi mạng local bị reset/refused với api.themoviedb.org, có thể submit riêng bước enrich lên Kaggle.
+
+Chuẩn bị:
+- Tạo Kaggle API token và đặt tại ~/.kaggle/kaggle.json, hoặc export KAGGLE_USERNAME/KAGGLE_KEY.
+- Trong Kaggle UI, tạo Secret tên TMDB_API_KEY chứa TMDb API key.
+
+Submit job enrich MovieLens small:
+
+    PYTHONPATH=src:. python scripts/submit_kaggle_enrich.py \
+      --username <kaggle_username> \
+      --dataset ml-latest-small
+
+Chạy thử ít phim trước:
+
+    PYTHONPATH=src:. python scripts/submit_kaggle_enrich.py \
+      --username <kaggle_username> \
+      --dataset ml-latest-small \
+      --limit 100
+
+Tải output sau khi kernel hoàn tất:
+
+    kaggle kernels output <kaggle_username>/movierec3-tmdb-enrich -p kaggle_outputs
+
+File cần lấy về local:
+
+    kaggle_outputs/data/processed/movie_catalog_enriched.parquet
+    kaggle_outputs/data/processed/tmdb_cache.json
+
+
+12. Tích hợp dữ liệu Letterboxd
+------------------------------
+Dữ liệu Letterboxd không có timestamp hành vi đủ tin cậy. File created_at là thời điểm crawler ghi dữ liệu, không phải thời điểm người dùng xem/chấm phim, nên pipeline dùng split random ổn định theo từng user thông qua timestamp synthetic.
+
+Chuẩn bị bản CF-ready sang format tương thích MovieLens:
+
+    PYTHONPATH=src:. python scripts/prepare_letterboxd.py \
+      --raw-dir data/letterboxd/data/raw \
+      --output-dir data/processed/letterboxd \
+      --split cf \
+      --rating-policy implicit \
+      --seed 42
+
+Output:
+
+    data/processed/letterboxd/ratings.csv
+    data/processed/letterboxd/movies.csv
+    data/processed/letterboxd/links.csv
+    data/processed/letterboxd/letterboxd_user_mapping.csv
+    data/processed/letterboxd/letterboxd_movie_mapping.csv
+    data/processed/letterboxd/letterboxd_interactions_debug.csv
+    data/processed/letterboxd/letterboxd_prepare_summary.json
+    data/processed/letterboxd/movie_catalog_enriched.parquet
+
+Rating policy:
+- implicit: dùng implicit_score. Phù hợp cho LightGCN/BPR ranking. Chạy train với --min-rating 4.0 để lấy liked/favorite/high-rating làm positive.
+- explicit: chỉ dùng interaction_type == rating và rating thật. Phù hợp hơn nếu muốn baseline explicit rating, nhưng mất dữ liệu.
+
+Enrich TMDb cho Letterboxd bằng schema chung với MovieLens:
+
+    PYTHONPATH=src:. python scripts/prepare_letterboxd.py \
+      --raw-dir data/letterboxd/data/raw \
+      --output-dir data/processed/letterboxd \
+      --split cf \
+      --rating-policy implicit \
+      --enrich-tmdb \
+      --sleep-seconds 0.5 \
+      --timeout 60 \
+      --max-retries 8
+
+Nếu mạng local tới api.themoviedb.org bị reset/refused, chạy bước prepare không enrich ở local, rồi chạy enrich trên Kaggle/cloud hoặc mạng khác.
+
+Train từ Letterboxd đã prepare:
+
+    PYTHONPATH=src:. python scripts/train.py \
+      --raw-dir data/processed/letterboxd \
+      --enriched-catalog data/processed/letterboxd/movie_catalog_enriched.parquet \
+      --artifacts-dir artifacts/letterboxd \
+      --content-backend tfidf \
+      --min-rating 4.0
+
+Khi đã có sentence-transformers/torch và môi trường mạnh hơn:
+
+    PYTHONPATH=src:. python scripts/train.py \
+      --raw-dir data/processed/letterboxd \
+      --enriched-catalog data/processed/letterboxd/movie_catalog_enriched.parquet \
+      --artifacts-dir artifacts/letterboxd \
+      --content-backend sbert \
+      --train-lightgcn \
+      --epochs 10 \
+      --min-rating 4.0

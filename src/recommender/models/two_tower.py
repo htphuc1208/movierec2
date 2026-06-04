@@ -10,6 +10,8 @@ from sklearn.decomposition import TruncatedSVD
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.preprocessing import normalize
 
+from recommender.data.tmdb import ENRICHED_TEXT_FIELDS
+
 
 EmbeddingBackend = Literal["sbert", "tfidf", "auto"]
 
@@ -22,12 +24,8 @@ def build_item_text(catalog: pd.DataFrame) -> list[str]:
         parts = [
             str(values.get("title", "")),
             str(values.get("genres", "")),
-            str(values.get("tmdb_genres", "")),
-            str(values.get("overview", "")),
-            str(values.get("tagline", "")),
-            str(values.get("director", "")),
-            str(values.get("cast", "")),
         ]
+        parts.extend(str(values.get(field, "")) for field in ENRICHED_TEXT_FIELDS)
         documents.append(" . ".join(part for part in parts if part))
     return documents
 

@@ -1,0 +1,23 @@
+{
+  "source": "letterboxd",
+  "split": "cf",
+  "rating_policy": "implicit",
+  "random_seed": 42,
+  "split_strategy": "synthetic_random_per_user",
+  "note": "created_at is crawler time and is not used as behavior time.",
+  "raw_interactions": 87855,
+  "usable_interactions": 87855,
+  "output_ratings": 87855,
+  "users": 1408,
+  "movies": 2636,
+  "watched_date_parseable": 0,
+  "watched_date_parseable_pct": 0.0,
+  "interaction_type_counts": {
+    "rating": 60460,
+    "watched": 23487,
+    "favorite": 2355,
+    "liked": 599,
+    "review": 546,
+    "diary": 408
+  }
+}

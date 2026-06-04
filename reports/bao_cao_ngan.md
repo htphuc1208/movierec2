@@ -7,7 +7,8 @@ Hệ thống giải quyết bài toán quá tải lựa chọn phim bằng cách
 ## 2. Dữ liệu
 
 - MovieLens: `ratings.csv`, `movies.csv`, `links.csv`.
-- TMDb: poster, overview, tagline, thể loại mở rộng, đạo diễn, diễn viên, popularity và vote average.
+- TMDb: poster, overview, thể loại mở rộng, keyword, đạo diễn, biên kịch, diễn viên, collection/franchise, quốc gia sản xuất, studio, runtime, popularity và vote statistics.
+- Letterboxd: dữ liệu crawler gồm users, movies và interactions. Bản CF-ready được chuyển sang format tương thích MovieLens; do `created_at` là thời điểm crawl, không phải thời điểm xem, đánh giá Letterboxd dùng split random ổn định theo user thay vì temporal split.
 - Dữ liệu sau xử lý được lưu dạng `Parquet`; artifacts mô hình lưu trong thư mục `artifacts/`.
 
 ## 3. Kiến trúc phương pháp

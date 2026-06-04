@@ -27,6 +27,7 @@ class AppSettings:
     artifacts_dir: Path = PROJECT_ROOT / "artifacts"
     tmdb_api_key: str | None = None
     tmdb_language: str = "vi-VN"
+    tmdb_base_url: str = "https://api.themoviedb.org/3"
     api_url: str = "http://localhost:8000"
 
 
@@ -38,5 +39,6 @@ def get_settings() -> AppSettings:
         artifacts_dir=Path(os.getenv("ARTIFACTS_DIR", PROJECT_ROOT / "artifacts")),
         tmdb_api_key=os.getenv("TMDB_API_KEY"),
         tmdb_language=os.getenv("TMDB_LANGUAGE", "vi-VN"),
+        tmdb_base_url=os.getenv("TMDB_BASE_URL", "https://api.themoviedb.org/3"),
         api_url=os.getenv("API_URL", "http://localhost:8000"),
     )

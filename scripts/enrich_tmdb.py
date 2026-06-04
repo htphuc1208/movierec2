@@ -18,6 +18,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--cache", type=Path, default=PROJECT_ROOT / "data" / "processed" / "tmdb_cache.json")
     parser.add_argument("--limit", type=int, default=None, help="Optional limit for smoke tests")
     parser.add_argument("--sleep-seconds", type=float, default=0.05)
+    parser.add_argument("--timeout", type=float, default=30.0)
+    parser.add_argument("--max-retries", type=int, default=5)
+    parser.add_argument("--retry-backoff", type=float, default=2.0)
+    parser.add_argument("--base-url", default=None, help="Override TMDb base URL, useful when routing through a proxy")
     return parser.parse_args()
 
 
@@ -25,7 +29,14 @@ def main() -> None:
     args = parse_args()
     settings = get_settings()
     data = read_movielens(args.raw_dir)
-    client = TMDBClient(api_key=settings.tmdb_api_key or "", language=settings.tmdb_language)
+    client = TMDBClient(
+        api_key=settings.tmdb_api_key or "",
+        language=settings.tmdb_language,
+        timeout=args.timeout,
+        max_retries=args.max_retries,
+        retry_backoff=args.retry_backoff,
+        base_url=args.base_url or settings.tmdb_base_url,
+    )
     enriched = enrich_catalog(
         data.movies,
         data.links,
