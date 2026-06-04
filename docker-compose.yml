@@ -1,0 +1,28 @@
+services:
+  api:
+    build: .
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000
+    environment:
+      - ARTIFACTS_DIR=/app/artifacts
+      - TMDB_API_KEY=${TMDB_API_KEY:-}
+      - TMDB_LANGUAGE=${TMDB_LANGUAGE:-vi-VN}
+    volumes:
+      - ./artifacts:/app/artifacts
+      - ./data:/app/data
+    ports:
+      - "8000:8000"
+
+  streamlit:
+    build: .
+    command: streamlit run app/streamlit_app.py --server.address 0.0.0.0 --server.port 8501
+    environment:
+      - API_URL=http://api:8000
+      - ARTIFACTS_DIR=/app/artifacts
+      - TMDB_API_KEY=${TMDB_API_KEY:-}
+    volumes:
+      - ./artifacts:/app/artifacts
+      - ./data:/app/data
+    ports:
+      - "8501:8501"
+    depends_on:
+      - api
