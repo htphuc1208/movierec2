@@ -8,6 +8,7 @@ Dự án xây dựng hệ thống gợi ý phim kết hợp:
 - TMDb làm nguồn làm giàu metadata, poster, overview, đạo diễn và diễn viên.
 - LightGCN tối ưu tín hiệu collaborative filtering bằng BPR loss.
 - SBERT Two-Tower tạo biểu diễn nội dung để xử lý cold-start.
+- RAG chatbot dùng embedding phim để truy xuất ngữ cảnh và gọi OpenAI sinh câu trả lời.
 - FastAPI phục vụ inference, Streamlit làm giao diện demo.
 
 
@@ -16,6 +17,7 @@ Dự án xây dựng hệ thống gợi ý phim kết hợp:
 Yêu cầu:
 - Python 3.10+.
 - TMDb API key v3.
+- OpenAI API key nếu dùng chatbot RAG.
 - GPU không bắt buộc cho demo nhỏ; Kaggle/GPU được khuyến nghị cho huấn luyện đầy đủ.
 
 Lệnh:
@@ -28,6 +30,17 @@ Lệnh:
 Mở file .env và điền:
 
     TMDB_API_KEY=...
+    OPENAI_API_KEY=...
+    CHAT_MODEL=gpt-5-nano
+
+Nếu dùng conda:
+
+    conda create -n recommender python=3.12
+    conda activate recommender
+    pip install -r requirements.txt
+    pip install -e .
+
+Lưu ý: nếu chỉ chạy CPU và pip tải nhiều package nvidia khi cài torch, có thể cài PyTorch CPU-only trước theo hướng dẫn chính thức của PyTorch rồi cài requirements còn lại.
 
 
 2. Tải dữ liệu MovieLens
@@ -81,6 +94,8 @@ Smoke test local nếu chưa cài sentence-transformers/torch:
       --content-backend tfidf \
       --artifacts-dir artifacts
 
+Lưu ý cho chatbot RAG: nên train bằng SBERT, không nên dùng TF-IDF cho bản chatbot chính. Chatbot sẽ encode câu hỏi mới bằng SentenceTransformer và so khớp với artifacts/content_embeddings.npy. Nếu train bằng TF-IDF, project hiện chưa lưu vectorizer/SVD để encode query mới cùng không gian vector.
+
 Artifacts xuất ra:
 - artifacts/movie_catalog.parquet
 - artifacts/user_mapping.json
@@ -107,6 +122,7 @@ Endpoints:
 - GET /health
 - GET /movies?query=toy&limit=20
 - POST /recommendations
+- POST /chat
 
 Ví dụ request:
 
@@ -120,6 +136,25 @@ Ví dụ session cold-start:
       -H "Content-Type: application/json" \
       -d '{"top_k": 10, "session_context": ["tmdb_862", "ml_1"]}'
 
+Test chatbot RAG:
+
+    curl -X POST http://localhost:8000/chat \
+      -H "Content-Type: application/json" \
+      -d '{"message": "Tôi muốn xem phim tâm lý buồn, nhẹ nhàng", "top_k": 6}'
+
+Mở tài liệu Swagger:
+
+    http://localhost:8000/docs
+
+Trong Swagger, chọn POST /chat, bấm Try it out, nhập JSON:
+
+    {
+      "message": "Tôi muốn xem phim hành động hài",
+      "top_k": 6
+    }
+
+Nếu gọi /chat lần đầu hơi lâu, đó là do API phải load artifacts và model SentenceTransformer. Các lần sau sẽ nhanh hơn vì chatbot được cache trong FastAPI.
+
 
 6. Chạy giao diện Streamlit
 ---------------------------
@@ -131,12 +166,29 @@ Truy cập:
 
     http://localhost:8501
 
+Giao diện có tab:
+- Gợi ý: gọi /recommendations.
+- Chatbot: gọi /chat để tư vấn phim bằng RAG.
+- Đánh giá: đọc metrics trong artifacts.
+- Trạng thái: kiểm tra /health.
+
+Khi dùng chatbot, cần chạy FastAPI trước và biến API_URL phải trỏ đúng backend:
+
+    API_URL=http://localhost:8000
+
 
 7. Chạy bằng Docker Compose
 ---------------------------
 
     cp .env.example .env
     docker compose up --build
+
+File .env cần có ít nhất:
+
+    TMDB_API_KEY=...
+    OPENAI_API_KEY=...
+    CHAT_MODEL=gpt-5-nano
+    ARTIFACTS_DIR=artifacts
 
 Các cổng:
 - FastAPI: http://localhost:8000
@@ -160,6 +212,7 @@ Nếu môi trường chưa cài torch hoặc fastapi, các test tương ứng s�
     src/recommender/models      SVD, LightGCN, BPR loss, Two-Tower embeddings
     src/recommender/eval        Precision@K, Recall@K, NDCG@K, MRR, RMSE
     src/recommender/inference   Load artifacts và sinh recommendations
+    src/recommender/rag         Retriever và chatbot RAG dùng OpenAI
     api                         FastAPI backend
     app                         Streamlit frontend
     scripts                     Download, enrich, train/export
@@ -168,7 +221,38 @@ Nếu môi trường chưa cài torch hoặc fastapi, các test tương ứng s�
     reports                     Báo cáo ngắn
 
 
-10. Ghi chú triển khai Kaggle
+10. Chatbot RAG
+---------------
+Chatbot RAG hoạt động theo luồng:
+- Người dùng nhập câu hỏi tự nhiên.
+- MovieRAGRetriever encode câu hỏi bằng SentenceTransformer.
+- Hệ thống lấy top_k phim gần nhất từ artifacts/content_embeddings.npy.
+- MovieRAGChatbot đưa metadata phim vào prompt.
+- OpenAI model sinh câu trả lời tiếng Việt và trả về sources.
+
+Các file chính:
+
+    src/recommender/rag/retriever.py
+    src/recommender/rag/chatbot.py
+    api/main.py
+    app/streamlit_app.py
+
+Biến môi trường:
+
+    OPENAI_API_KEY=...
+    CHAT_MODEL=gpt-5-nano
+
+Model gpt-5-nano chỉ dùng temperature mặc định, nên code không truyền temperature trong lời gọi OpenAI. Nếu đổi sang model khác, vẫn có thể giữ nguyên cấu hình này.
+
+Lỗi thường gặp:
+- GET http://localhost:8000 trả {"detail":"Not Found"}: bình thường, vì API không có route /. Dùng /docs hoặc /health.
+- /chat trả 401: OPENAI_API_KEY sai hoặc chưa restart API sau khi sửa .env.
+- /chat trả 502 với unsupported temperature: bỏ tham số temperature hoặc dùng code hiện tại.
+- Cảnh báo HF_TOKEN: không bắt buộc, chỉ ảnh hưởng rate limit/tốc độ tải model từ Hugging Face.
+- /chat lần đầu chậm: do load SentenceTransformer; giữ server chạy để các lần sau nhanh hơn.
+
+
+11. Ghi chú triển khai Kaggle
 -----------------------------
 - Lưu TMDB_API_KEY bằng Kaggle Secrets.
 - Dùng GPU accelerator nếu train LightGCN và SBERT trên tập lớn.
@@ -179,7 +263,7 @@ Nếu môi trường chưa cài torch hoặc fastapi, các test tương ứng s�
 Sau đó giải nén vào repo local và chạy API/UI.
 
 
-11. Chạy riêng bước enrich TMDb trên Kaggle
+12. Chạy riêng bước enrich TMDb trên Kaggle
 -------------------------------------------
 Khi mạng local bị reset/refused với api.themoviedb.org, có thể submit riêng bước enrich lên Kaggle.
 
@@ -210,7 +294,7 @@ File cần lấy về local:
     kaggle_outputs/data/processed/tmdb_cache.json
 
 
-12. Tích hợp dữ liệu Letterboxd
+13. Tích hợp dữ liệu Letterboxd
 ------------------------------
 Dữ liệu Letterboxd không có timestamp hành vi đủ tin cậy. File created_at là thời điểm crawler ghi dữ liệu, không phải thời điểm người dùng xem/chấm phim, nên pipeline dùng split random ổn định theo từng user thông qua timestamp synthetic.
 

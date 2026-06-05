@@ -55,7 +55,7 @@ def main() -> None:
     st.set_page_config(page_title="Gợi ý phim hybrid", layout="wide")
     st.title("Hệ thống gợi ý phim hybrid")
 
-    tab_recs, tab_metrics, tab_status = st.tabs(["Gợi ý", "Đánh giá", "Trạng thái"])
+    tab_recs, tab_chat, tab_metrics, tab_status = st.tabs(["Gợi ý", "Chatbot", "Đánh giá", "Trạng thái"])
 
     with tab_recs:
         left, right = st.columns([1, 2])
@@ -115,6 +115,56 @@ def main() -> None:
             st.json(api_get("/health"))
         except requests.RequestException as exc:
             st.error(f"Không gọi được API: {exc}")
+    
+    with tab_chat:
+        st.subheader("Chatbot tư vấn phim")
+
+        if "chat_messages" not in st.session_state:
+            st.session_state.chat_messages = []
+
+        for message in st.session_state.chat_messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+
+        user_message = st.chat_input("Bạn muốn xem phim kiểu gì?")
+
+        if user_message:
+            st.session_state.chat_messages.append(
+                {"role": "user", "content": user_message}
+            )
+
+            with st.chat_message("user"):
+                st.markdown(user_message)
+
+            try:
+                data = api_post(
+                    "/chat",
+                    {
+                        "message": user_message,
+                        "top_k": 6,
+                    },
+                )
+                answer = data.get("answer", "")
+                st.session_state.chat_messages.append(
+                    {"role": "assistant", "content": answer}
+                )
+
+                with st.chat_message("assistant"):
+                    st.markdown(answer)
+
+                    sources = data.get("sources", [])
+                    if sources:
+                        st.caption("Phim được dùng làm nguồn gợi ý:")
+                        cols = st.columns(3)
+                        for idx, movie in enumerate(sources[:6]):
+                            with cols[idx % 3]:
+                                if movie.get("poster_url"):
+                                    st.image(movie["poster_url"], use_container_width=True)
+                                st.markdown(f"**{movie.get('title', '')}**")
+                                st.caption(f"Điểm liên quan: {movie.get('score', 0):.3f}")
+
+            except requests.RequestException as exc:
+                st.error(f"Không gọi được chatbot API: {exc}")
 
 
 if __name__ == "__main__":

@@ -6,12 +6,14 @@ from functools import lru_cache
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query
+from openai import AuthenticationError, OpenAIError
 from pydantic import BaseModel, Field
 
 from recommender.config import get_settings
 from recommender.inference.artifacts import artifact_status
 from recommender.inference.recommender import HybridArtifactRecommender
-
+from recommender.inference.artifacts import load_artifact_bundle
+from recommender.rag.chatbot import MovieRAGChatbot
 
 app = FastAPI(title="Hybrid Movie Recommendation API", version="0.1.0")
 
@@ -33,12 +35,27 @@ class MovieRecommendation(BaseModel):
 
 class RecommendationResponse(BaseModel):
     recommendations: list[MovieRecommendation]
+    
+class ChatRequest(BaseModel):
+    message: str
+    top_k: int = Field(default=6, ge=1, le=20)
+
+
+class ChatResponse(BaseModel):
+    answer: str
+    sources: list[dict[str, Any]] = Field(default_factory=list)
 
 
 @lru_cache(maxsize=1)
 def get_recommender() -> HybridArtifactRecommender:
     settings = get_settings()
     return HybridArtifactRecommender.from_dir(settings.artifacts_dir)
+
+@lru_cache(maxsize=1)
+def get_chatbot() -> MovieRAGChatbot:
+    settings = get_settings()
+    bundle = load_artifact_bundle(settings.artifacts_dir)
+    return MovieRAGChatbot(bundle)
 
 
 @app.get("/health")
@@ -71,3 +88,22 @@ def recommendations(request: RecommendationRequest) -> RecommendationResponse:
     except FileNotFoundError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     return RecommendationResponse(recommendations=results)
+
+
+@app.post("/chat", response_model=ChatResponse)
+def chat(request: ChatRequest) -> ChatResponse:
+    try:
+        result = get_chatbot().answer(
+            message=request.message,
+            top_k=request.top_k,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except AuthenticationError as exc:
+        raise HTTPException(
+            status_code=401,
+            detail="OPENAI_API_KEY không hợp lệ. Hãy thay key thật trong .env rồi restart API.",
+        ) from exc
+    except OpenAIError as exc:
+        raise HTTPException(status_code=502, detail=f"OpenAI API error: {exc}") from exc
+    return ChatResponse(**result)

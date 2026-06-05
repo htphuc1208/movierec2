@@ -14,3 +14,4 @@ torch>=2.3.0
 sentence-transformers>=3.0.0
 pytest>=8.0.0
 kaggle>=1.6.17
+openai>=1.0.0
