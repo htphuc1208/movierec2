@@ -31,7 +31,9 @@ class PreparedInteractions:
     train: pd.DataFrame
     val: pd.DataFrame
     test: pd.DataFrame
-    user_mapping: Dict[int, int]
+
+    # Mappings from original IDs to encoded indices
+    user_mapping: Dict[int, int] 
     item_mapping: Dict[int, int]
 
     @property
@@ -72,7 +74,9 @@ def read_movielens(raw_dir: str | Path) -> MovieLensData:
         links = pd.DataFrame(columns=["movieId", "imdbId", "tmdbId"])
     else:
         raise FileNotFoundError(f"MovieLens files were not found in {raw_dir}")
-
+    
+    # kiem tra du cot khong va ep kieu du lieu cho ratings va movies,
+    #  ep kieu cho links neu co, tra ve MovieLensData
     required_rating_cols = {"userId", "movieId", "rating", "timestamp"}
     required_movie_cols = {"movieId", "title", "genres"}
     if not required_rating_cols.issubset(ratings.columns):
@@ -107,15 +111,17 @@ def prepare_interactions(
     test_ratio: float = 0.1,
 ) -> PreparedInteractions:
     """Filter positive feedback, encode IDs and split each user by timestamp."""
+    # Lọc các tương tác có rating >= min_rating, nếu không còn tương tác nào thì raise lỗi
     interactions = ratings.loc[ratings["rating"] >= min_rating].copy()
     if interactions.empty:
         raise ValueError("No positive interactions remain after applying min_rating")
 
+    # Encode userId và movieId thành user_idx và item_idx, tạo mapping từ ID gốc sang index, sắp xếp theo user_idx, timestamp, item_idx
     users = sorted(interactions["userId"].unique().tolist())
     items = sorted(interactions["movieId"].unique().tolist())
     user_mapping = {int(user_id): idx for idx, user_id in enumerate(users)}
     item_mapping = {int(movie_id): idx for idx, movie_id in enumerate(items)}
-
+    # Thêm cột user_idx và item_idx vào interactions bằng cách map userId và movieId qua user_mapping và item_mapping, ép kiểu int, sắp xếp theo user_idx, timestamp, item_idx, reset index
     interactions["user_idx"] = interactions["userId"].map(user_mapping).astype(int)
     interactions["item_idx"] = interactions["movieId"].map(item_mapping).astype(int)
     interactions = interactions.sort_values(["user_idx", "timestamp", "item_idx"]).reset_index(drop=True)
@@ -124,13 +130,15 @@ def prepare_interactions(
     val_parts: list[pd.DataFrame] = []
     test_parts: list[pd.DataFrame] = []
 
+    # Với mỗi user_idx, lấy các tương tác của user đó, sắp xếp theo timestamp và item_idx, chia thành train/val/test theo test_ratio và val_ratio, đảm bảo mỗi phần có ít nhất 1 tương tác và train có ít nhất 3 tương tác nếu có thể
     for _, group in interactions.groupby("user_idx", sort=False):
         group = group.sort_values(["timestamp", "item_idx"])
         n = len(group)
+        # Nếu user có ít hơn 3 tương tác, bỏ qua việc chia và đưa tất cả vào train
         if n < 3:
             train_parts.append(group)
             continue
-
+        # Tính số lượng tương tác cho test và val, đảm bảo mỗi phần có ít nhất 1 tương tác và train có ít nhất 3 tương tác nếu có thể
         test_count = max(1, int(round(n * test_ratio)))
         val_count = max(1, int(round(n * val_ratio))) if n - test_count >= 3 else 0
         train_end = max(1, n - val_count - test_count)

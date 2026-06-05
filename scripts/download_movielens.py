@@ -14,7 +14,9 @@ from recommender.data.movielens import MOVIELENS_URLS
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Download MovieLens data")
+    # chon bo du lieu can tai
     parser.add_argument("--dataset", choices=sorted(MOVIELENS_URLS), default="ml-latest-small")
+    # chon noi luu du lieu
     parser.add_argument("--output-dir", type=Path, default=PROJECT_ROOT / "data" / "raw")
     return parser.parse_args()
 

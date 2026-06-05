@@ -35,7 +35,8 @@ RatingPolicy = Literal["implicit", "explicit"]
 
 LETTERBOXD_TMDB_CACHE_SCHEMA_VERSION = 1
 
-
+# raw interactions CSV must include at least: 
+# user_id, movie_id, interaction_type, rating, implicit_score, source, watched_date, created_at
 @dataclass(frozen=True)
 class LetterboxdData:
     interactions: pd.DataFrame
@@ -43,7 +44,7 @@ class LetterboxdData:
     users: pd.DataFrame
     split: LetterboxdSplit
 
-
+# sau khi da convert 
 @dataclass(frozen=True)
 class LetterboxdPreparedData:
     ratings: pd.DataFrame
@@ -62,7 +63,7 @@ def read_letterboxd(raw_dir: str | Path, split: LetterboxdSplit = "cf") -> Lette
     movies = pd.read_csv(raw_dir / movies_name, encoding="utf-8-sig")
     users_path = raw_dir / "users.csv"
     users = pd.read_csv(users_path, encoding="utf-8-sig") if users_path.exists() else pd.DataFrame()
-
+    # kiem tra cot bat buoc
     required_interactions = {
         "user_id",
         "movie_id",
@@ -91,6 +92,8 @@ def materialize_letterboxd(
     """Convert Letterboxd crawler CSVs into a MovieLens-compatible folder."""
     data = read_letterboxd(raw_dir, split=split)
     interactions = data.interactions.copy()
+    # ep kieu rating va implicit_score thanh so, 
+    # loc ra tuong tac co rating/implicit_score hop le theo rating_policy,
     interactions["explicit_rating"] = pd.to_numeric(interactions["rating"], errors="coerce")
     interactions["implicit_score"] = pd.to_numeric(interactions["implicit_score"], errors="coerce")
 
@@ -104,12 +107,13 @@ def materialize_letterboxd(
     if usable.empty:
         raise ValueError("No usable Letterboxd interactions after applying rating policy")
     usable = usable.reset_index(drop=True)
-
+    # mapping user_id va movie_id goc sang userId va movieId 
+    # dang so lien tuc bat dau tu 1,
     user_ids = usable["user_id"].drop_duplicates().tolist()
     movie_ids = usable["movie_id"].drop_duplicates().tolist()
     user_to_int = {user_id: idx + 1 for idx, user_id in enumerate(user_ids)}
     movie_to_int = {movie_id: idx + 1 for idx, movie_id in enumerate(movie_ids)}
-
+    # them cot userId va movieId dang int, tao cot timestamp 
     usable["userId"] = usable["user_id"].map(user_to_int).astype(int)
     usable["movieId"] = usable["movie_id"].map(movie_to_int).astype(int)
     watched_datetime = pd.to_datetime(usable["watched_date"], errors="coerce", utc=True)
@@ -166,7 +170,10 @@ def materialize_letterboxd(
         summary=summary,
     )
 
-
+# doc movies.csv va letterboxd_movie_mapping.csv, 
+# merge de tao catalog co day du thong tin tu movies.csv va mapping, 
+# them cac cot lien quan den letterboxd nhu letterboxd_movie_id, letterboxd_title, letterboxd_year, title_for_tmdb, letterboxd_movie_url, 
+# sau do them cac cot cho metadata tu tmdb nhu tmdbId, tmdb_genres,... voi gia tri mac dinh la rong neu chua co du lieu
 def build_base_letterboxd_catalog(output_dir: str | Path) -> pd.DataFrame:
     """Build a catalog parquet with Letterboxd fields and empty TMDb metadata."""
     output_dir = Path(output_dir)
@@ -179,7 +186,13 @@ def build_base_letterboxd_catalog(output_dir: str | Path) -> pd.DataFrame:
             catalog[key] = value
     return catalog
 
-
+# enrich catalog tu tmdb, doc tung dong trong catalog, 
+# neu co letterboxd_movie_id thi search tmdb theo title va year, 
+# tinh score de chon ket qua tmdb hop nhat, 
+# neu score thap hon min_match_score thi xem nhu khong tim thay, 
+# neu tim thay thi lay details tu tmdb va them vao catalog, 
+# luu cache de tranh search lan sau, sau do xuat ra file parquet 
+# voi day du thong tin tu letterboxd va tmdb
 def enrich_letterboxd_catalog(
     output_dir: str | Path,
     client: TMDBClient,
@@ -315,7 +328,8 @@ def _extract_year(title: Any, year: Any) -> str:
 def _strip_trailing_year(title: Any) -> str:
     return re.sub(r"\s*\(\d{4}\)\s*$", "", str(title or "")).strip()
 
-
+# tinh score de do do giong nhau giua title goc va title candidate tu tmdb, 
+# score duoc tinh dua tren do giong nhau cua title va do gan nhau ve nam
 def _normalize_title(title: str) -> str:
     text = _strip_trailing_year(title).lower().strip()
     text = re.sub(r"^(the|a|an)\s+", "", text)
@@ -332,7 +346,6 @@ def _title_similarity(left: str, right: str) -> int:
         return 100
     return int(SequenceMatcher(None, left_norm, right_norm).ratio() * 100)
 
-
 def _year_score(letterboxd_year: str, release_date: str) -> int:
     if not letterboxd_year or not release_date:
         return 0
@@ -346,7 +359,7 @@ def _year_score(letterboxd_year: str, release_date: str) -> int:
         return 10
     return -20
 
-
+# ham goi tmdb search va lay metadata 
 def _fetch_letterboxd_tmdb_match(client: TMDBClient, base: dict[str, Any], min_match_score: int) -> dict[str, Any]:
     query = str(base.get("title_for_tmdb") or base.get("title") or "").strip()
     year = str(base.get("letterboxd_year") or "").strip()
@@ -367,7 +380,6 @@ def _fetch_letterboxd_tmdb_match(client: TMDBClient, base: dict[str, Any], min_m
     except requests.RequestException as exc:
         return _cache_payload("error", 0, "", normalize_tmdb_payload({}), str(exc))
 
-
 def _pick_best_tmdb_result(results: list[dict[str, Any]], title: str, year: str) -> tuple[dict[str, Any] | None, int]:
     best: dict[str, Any] | None = None
     best_score = 0
@@ -382,7 +394,8 @@ def _pick_best_tmdb_result(results: list[dict[str, Any]], title: str, year: str)
             best_score = score
     return best, best_score
 
-
+# tao mot ban ghi cache de luu ket qua search va enrich tmdb, 
+# de tranh search lan sau,
 def _cache_payload(status: str, match_score: int, tmdb_match_title: str, data: dict[str, Any], error: str) -> dict[str, Any]:
     payload = {
         "ok": status == "matched",
