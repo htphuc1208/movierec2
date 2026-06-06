@@ -40,6 +40,7 @@ import random
 import re
 import sys
 import time
+import shutil
 import xml.etree.ElementTree as ET
 from collections import Counter, deque
 from dataclasses import dataclass
@@ -105,28 +106,36 @@ SEED_FILM_SLUGS = [
     "mad-max-fury-road",
 ]
 
-SEED_MEMBERS_PAGES = 4
-MAX_SEED_USER_CANDIDATES = 4000
+SEED_MEMBERS_PAGES = 10
+MAX_SEED_USER_CANDIDATES = 20000
 
-# Target đồ án.
-MIN_USERS = 300
-TARGET_USERS = 800
-MAX_USERS = 1000
+# Target mở rộng: raw phải lớn hơn MovieLens để sau k-core vẫn còn ~100K.
+# MovieLens-small tham chiếu: ~600 users, ~9K movies, ~100K ratings.
+MIN_USERS = 600
+TARGET_USERS = 1500
+MAX_USERS = 3000
 
-MIN_MOVIES = 3000
-TARGET_MOVIES = 8000
-MAX_MOVIES = 10000
+MIN_MOVIES = 9000
+TARGET_MOVIES = 15000
+MAX_MOVIES = 30000
 
-MIN_INTERACTIONS = 10000
-TARGET_INTERACTIONS = 50000
-MAX_INTERACTIONS = 50000
+# Đây là ngưỡng RAW/hard-cap, không phải mục tiêu CF-ready.
+# Raw cần lớn hơn 100K vì k-core sẽ loại bớt user/movie thưa.
+MIN_INTERACTIONS = 100000
+TARGET_INTERACTIONS = 250000
+MAX_INTERACTIONS = 400000
+
+# Mục tiêu thật sau k-core: dùng để quyết định dừng crawl.
+TARGET_CF_USERS = 600
+TARGET_CF_MOVIES = 9000
+TARGET_CF_INTERACTIONS = 100000
 
 # Default đã chỉnh để bớt loãng: films thấp, likes/reviews/diary cao hơn.
-PAGES_PER_FILMS = 1
-PAGES_PER_LIKES = 5
-PAGES_PER_REVIEWS = 3
-PAGES_PER_DIARY = 4
-PAGES_PER_FOLLOWING = 3
+PAGES_PER_FILMS = 2
+PAGES_PER_LIKES = 8
+PAGES_PER_REVIEWS = 5
+PAGES_PER_DIARY = 6
+PAGES_PER_FOLLOWING = 5
 
 # K-core cho CF.
 CF_MIN_USER_INTERACTIONS = 10
@@ -160,6 +169,7 @@ MOVIES_CF_CSV = RAW_DIR / "movies_cf.csv"
 CRAWL_REPORT_TXT = RAW_DIR / "crawl_report.txt"
 CRAWL_STATE_CSV = RAW_DIR / "crawl_state.csv"
 SEED_USERS_CSV = RAW_DIR / "seed_user_candidates.csv"
+BACKUP_ROOT_DIR = RAW_DIR / "backups"
 
 HEADERS = {
     "User-Agent": (
@@ -186,6 +196,11 @@ class CrawlConfig:
     target_interactions: int = TARGET_INTERACTIONS
     max_interactions: int = MAX_INTERACTIONS
 
+    # Đích sau k-core. Không dùng raw interactions để dừng sớm nữa.
+    target_cf_users: int = TARGET_CF_USERS
+    target_cf_movies: int = TARGET_CF_MOVIES
+    target_cf_interactions: int = TARGET_CF_INTERACTIONS
+
     pages_per_films: int = PAGES_PER_FILMS
     pages_per_likes: int = PAGES_PER_LIKES
     pages_per_reviews: int = PAGES_PER_REVIEWS
@@ -205,8 +220,10 @@ class CrawlConfig:
     seed_members_pages: int = SEED_MEMBERS_PAGES
     max_seed_user_candidates: int = MAX_SEED_USER_CANDIDATES
     skip_movie_overlap_seed: bool = False
+    rebuild_seed_users: bool = False
 
     resume: bool = True
+    backup_before_run: bool = True
     debug_urls: bool = False
 
 
@@ -446,6 +463,24 @@ def csv_write_atomic(path: Path, rows: List[Dict], fieldnames: List[str]) -> Non
         for row in rows:
             writer.writerow(row)
     tmp_path.replace(path)
+
+
+def backup_existing_raw_files() -> Optional[Path]:
+    """Tạo bản sao CSV cũ trước khi resume để tránh mất dữ liệu nếu chạy lỗi giữa chừng."""
+    existing_files = [
+        USERS_CSV, MOVIES_CSV, INTERACTIONS_CSV, RATINGS_CSV,
+        INTERACTIONS_CF_CSV, RATINGS_CF_CSV, MOVIES_CF_CSV,
+        CRAWL_STATE_CSV, SEED_USERS_CSV, CRAWL_REPORT_TXT,
+    ]
+    existing_files = [path for path in existing_files if path.exists()]
+    if not existing_files:
+        return None
+
+    backup_dir = BACKUP_ROOT_DIR / datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    for path in existing_files:
+        shutil.copy2(path, backup_dir / path.name)
+    return backup_dir
 
 
 def deduplicate_by_key(rows: Iterable[Dict], key_fields: Iterable[str]) -> List[Dict]:
@@ -1211,6 +1246,8 @@ def save_seed_user_candidates(user_counter: Counter) -> None:
 
 
 def load_seed_user_candidates(store: "DatasetStore", config: CrawlConfig) -> List[str]:
+    if config.rebuild_seed_users:
+        return []
     if not config.resume or not SEED_USERS_CSV.exists():
         return []
 
@@ -1403,10 +1440,12 @@ class DatasetStore:
             for r in self.interactions
             if r.get("user_id") and r.get("movie_id")
         }
+        # Các username đã xử lý rồi: done = crawl thành công, invalid = 404/không phải profile thật.
+        # Bản cũ chỉ bỏ qua status="done", nên mỗi lần --resume lại thử lại các user 404 trong seed cache.
         self.crawled_usernames: Set[str] = {
             normalize_username(r.get("username", ""))
             for r in self.crawl_state
-            if r.get("username") and r.get("status") == "done"
+            if r.get("username") and r.get("status") in {"done", "invalid"}
         }
 
     def counts(self) -> Tuple[int, int, int]:
@@ -1497,22 +1536,50 @@ class DatasetStore:
 
         return added_movies, added_interactions
 
-    def mark_crawled(self, username: str) -> None:
+    def mark_crawled(self, username: str, status: str = "done") -> None:
         username = normalize_username(username)
+        if not is_valid_letterboxd_username(username):
+            return
+        if status not in {"done", "invalid"}:
+            status = "done"
         self.crawled_usernames.add(username)
-        self.crawl_state.append({"username": username, "status": "done", "crawled_at": now_iso()})
+        self.crawl_state.append({"username": username, "status": status, "crawled_at": now_iso()})
         self.crawl_state = deduplicate_by_key(reversed(self.crawl_state), ["username"])
         self.crawl_state = list(reversed(self.crawl_state))
 
+    def cf_interactions(self) -> List[Dict]:
+        return k_core_filter_interactions(
+            self.interactions,
+            min_user_interactions=self.config.cf_min_user_interactions,
+            min_movie_interactions=self.config.cf_min_movie_interactions,
+        )
+
+    def cf_stats(self) -> Dict[str, object]:
+        return quality_stats(self.cf_interactions())
+
     def should_stop(self) -> bool:
         users, movies, interactions = self.counts()
+
+        # Hard cap để crawler không chạy vô hạn. Đây không phải điều kiện thành công.
         if users >= self.config.max_users:
             return True
-        if interactions >= self.config.max_interactions and users >= self.config.min_users and movies >= self.config.min_movies:
+        if interactions >= self.config.max_interactions:
             return True
-        if users >= self.config.target_users and movies >= self.config.min_movies and interactions >= self.config.target_interactions:
-            return True
-        return False
+
+        # Chưa đủ raw thì chắc chắn CF-ready chưa thể đạt mục tiêu.
+        if (
+            users < self.config.target_cf_users
+            or movies < self.config.target_cf_movies
+            or interactions < self.config.target_cf_interactions
+        ):
+            return False
+
+        cf_stats = self.cf_stats()
+        return (
+            int(cf_stats["unique_users"]) >= self.config.target_cf_users
+            and int(cf_stats["unique_movies"]) >= self.config.target_cf_movies
+            and int(cf_stats["unique_interactions"]) >= self.config.target_cf_interactions
+        )
 
     def save_all(self, reason: str = "") -> None:
         self.interactions = merge_interactions(self.interactions)
@@ -1522,11 +1589,7 @@ class DatasetStore:
             if r.get("user_id") and r.get("movie_id")
         }
 
-        interactions_cf = k_core_filter_interactions(
-            self.interactions,
-            min_user_interactions=self.config.cf_min_user_interactions,
-            min_movie_interactions=self.config.cf_min_movie_interactions,
-        )
+        interactions_cf = self.cf_interactions()
         ratings_rows = build_ratings_rows(self.interactions)
         ratings_cf_rows = build_ratings_rows(interactions_cf)
         cf_movie_ids = {r.get("movie_id") for r in interactions_cf if r.get("movie_id")}
@@ -1556,7 +1619,14 @@ class DatasetStore:
         write_report(self, interactions_cf)
         if reason:
             users, movies, interactions = self.counts()
-            print(f"\n[CHECKPOINT] {reason}: users={users}, movies={movies}, interactions={interactions}", flush=True)
+            cf_stats = quality_stats(interactions_cf)
+            print(
+                f"\n[CHECKPOINT] {reason}: "
+                f"raw users={users}, movies={movies}, interactions={interactions} | "
+                f"CF users={cf_stats['unique_users']}, movies={cf_stats['unique_movies']}, "
+                f"interactions={cf_stats['unique_interactions']}",
+                flush=True,
+            )
 
 
 # ============================================================
@@ -1605,6 +1675,7 @@ def write_report(store: DatasetStore, interactions_cf: List[Dict]) -> None:
         f"- Movies with <5 interactions: {raw_stats['movies_lt_5_interactions']}",
         "",
         "CF-ready dataset after k-core filtering:",
+        f"- Target users/movies/interactions: {store.config.target_cf_users}/{store.config.target_cf_movies}/{store.config.target_cf_interactions}",
         f"- Users: {cf_stats['unique_users']}",
         f"- Movies: {cf_stats['unique_movies']}",
         f"- Interactions: {cf_stats['unique_interactions']}",
@@ -1646,9 +1717,9 @@ def print_final_report(store: DatasetStore) -> None:
     if cf_stats["unique_interactions"] == 0:
         print("\n[WARN] interactions_cf.csv rỗng sau k-core filtering.")
         print("Gợi ý: chạy tiếp --resume hoặc giảm --cf-min-movie-interactions 3.")
-    elif int(cf_stats["unique_interactions"]) < MIN_INTERACTIONS:
-        print("\n[NOTE] CF-ready interactions vẫn thấp hơn 10.000.")
-        print("Gợi ý: chạy tiếp --resume, hoặc tăng --pages-likes/--pages-diary.")
+    elif int(cf_stats["unique_interactions"]) < TARGET_CF_INTERACTIONS:
+        print(f"\n[NOTE] CF-ready interactions vẫn thấp hơn mục tiêu {TARGET_CF_INTERACTIONS:,}.")
+        print("Gợi ý: chạy tiếp --resume, tăng --max-users/--max-interactions, hoặc tăng --pages-likes/--pages-diary.")
 
 
 # ============================================================
@@ -1659,15 +1730,26 @@ def main_crawl(config: CrawlConfig) -> DatasetStore:
     store = DatasetStore(config)
     existing_users, existing_movies, existing_interactions = store.counts()
 
+    if config.resume and config.backup_before_run:
+        backup_dir = backup_existing_raw_files()
+        if backup_dir:
+            print(f"[BACKUP] Existing raw files copied to: {backup_dir}", flush=True)
+
     print("Start Letterboxd hybrid crawling: movie-overlap seed + user-centric crawl...")
     print(f"Data dir: {RAW_DIR}")
     print(f"Resume: {config.resume}")
     print(f"Existing: users={existing_users}, movies={existing_movies}, interactions={existing_interactions}")
     print(
-        "Targets: "
+        "Raw hard caps: "
         f"users={config.min_users}-{config.max_users}, "
         f"movies={config.min_movies}-{config.max_movies}, "
         f"interactions={config.min_interactions}-{config.max_interactions}"
+    )
+    print(
+        "CF-ready target: "
+        f"users={config.target_cf_users}, "
+        f"movies={config.target_cf_movies}, "
+        f"interactions={config.target_cf_interactions}"
     )
     print(
         "Pages/user: "
@@ -1725,8 +1807,13 @@ def main_crawl(config: CrawlConfig) -> DatasetStore:
 
             profile_info, interactions, movies = crawl_user_interactions(username, config=config)
             if profile_info.get("_invalid_user"):
+                # Lưu lại user 404/không hợp lệ để các lần --resume sau không thử lại nữa.
+                store.mark_crawled(username, status="invalid")
                 crawled_this_run.add(username)
                 print(f"[SKIP] Not a valid Letterboxd user profile: {username}", flush=True)
+
+                if len(crawled_this_run) % max(1, config.checkpoint_every_users) == 0:
+                    store.save_all(reason=f"saved after {len(crawled_this_run)} users this run")
                 continue
 
             user = store.upsert_user(username, profile=profile_info)
@@ -1789,6 +1876,10 @@ def parse_args(argv: Optional[List[str]] = None) -> CrawlConfig:
     parser.add_argument("--target-interactions", type=int, default=TARGET_INTERACTIONS)
     parser.add_argument("--max-interactions", type=int, default=MAX_INTERACTIONS)
 
+    parser.add_argument("--target-cf-users", type=int, default=TARGET_CF_USERS)
+    parser.add_argument("--target-cf-movies", type=int, default=TARGET_CF_MOVIES)
+    parser.add_argument("--target-cf-interactions", type=int, default=TARGET_CF_INTERACTIONS)
+
     parser.add_argument("--pages-films", type=int, default=PAGES_PER_FILMS)
     parser.add_argument("--pages-likes", type=int, default=PAGES_PER_LIKES)
     parser.add_argument("--pages-reviews", type=int, default=PAGES_PER_REVIEWS)
@@ -1808,6 +1899,10 @@ def parse_args(argv: Optional[List[str]] = None) -> CrawlConfig:
                         help="Giới hạn số seed users lấy từ movie-overlap phase")
     parser.add_argument("--skip-movie-overlap-seed", action="store_true",
                         help="Bỏ phase /film/{slug}/members/, chỉ dùng SEED_USERNAMES fallback")
+    parser.add_argument("--rebuild-seed-users", action="store_true",
+                        help="Bỏ cache seed_user_candidates.csv và crawl lại seed users từ members pages")
+    parser.add_argument("--no-backup", action="store_true",
+                        help="Không tạo bản backup CSV cũ trước khi resume")
     parser.add_argument("--debug-urls", action="store_true", help="In URL đang request để dễ biết crawler có đang chạy không")
 
     args = parser.parse_args(argv)
@@ -1822,6 +1917,9 @@ def parse_args(argv: Optional[List[str]] = None) -> CrawlConfig:
         min_interactions=args.min_interactions,
         target_interactions=args.target_interactions,
         max_interactions=args.max_interactions,
+        target_cf_users=args.target_cf_users,
+        target_cf_movies=args.target_cf_movies,
+        target_cf_interactions=args.target_cf_interactions,
         pages_per_films=args.pages_films,
         pages_per_likes=args.pages_likes,
         pages_per_reviews=args.pages_reviews,
@@ -1836,7 +1934,9 @@ def parse_args(argv: Optional[List[str]] = None) -> CrawlConfig:
         seed_members_pages=args.seed_members_pages,
         max_seed_user_candidates=args.max_seed_user_candidates,
         skip_movie_overlap_seed=args.skip_movie_overlap_seed,
+        rebuild_seed_users=args.rebuild_seed_users,
         resume=not args.no_resume,
+        backup_before_run=not args.no_backup,
         debug_urls=args.debug_urls,
     )
 
