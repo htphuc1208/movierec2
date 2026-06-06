@@ -1,8 +1,10 @@
-# Phân hệ Web & API Đề xuất Phim (Mini IMDb)
+# Phân hệ Web & API Đề xuất Phim
 
 Tài liệu này mô tả phần giao diện người dùng (Frontend) và các API phục vụ đề xuất phim (Backend) của dự án. Hệ thống được thiết kế theo kiến trúc Client-Server, tích hợp trực tiếp với các mô hình AI đã huấn luyện.
 
-## 🚀 Các tính năng đã hoàn thiện trong phân hệ này
+### Note: Hiện tại đang sử dụng dữ liệu từ dataset ml-latest-small kết hợp với enriched_movies.csv
+
+## Các tính năng đã hoàn thiện trong phân hệ này
 
 1. **Giao diện Trang chủ (IMDb Style):**
    - Hero Banner nổi bật cho phim Top 1 Trending.

@@ -116,9 +116,12 @@ def init_session_state():
 # ==========================================
 def handle_search():
     query = st.session_state.search_box_widget
+    
     if query.strip():
         st.session_state.search_query = query
         st.session_state.current_page = "search"
+        
+        st.session_state.search_box_widget = ""
         
 def clear_search_and_home():
     st.session_state.search_query = ""
@@ -129,7 +132,7 @@ def render_navbar(users: list[int]):
     col1, col2, col3, col4 = st.columns([1.5, 4, 1.5, 1], vertical_alignment="center")
     
     with col1:
-        st.button("**MINI IMDb**", on_click=clear_search_and_home, use_container_width=True)
+        st.button("**movierec**", on_click=clear_search_and_home, width="stretch")
             
     with col2:
         st.text_input(
@@ -150,9 +153,9 @@ def render_navbar(users: list[int]):
             st.session_state.current_page = "history"
             
         if selected_user != "Guest":
-            st.button("Lịch sử", on_click=go_to_history, use_container_width=True)
+            st.button("Lịch sử", on_click=go_to_history, width="stretch")
         else:
-            st.button("Lịch sử", disabled=True, use_container_width=True, help="Vui lòng chọn User để xem lịch sử")
+            st.button("Lịch sử", disabled=True, width="stretch", help="Vui lòng chọn User để xem lịch sử")
             
     st.divider()
 
@@ -210,9 +213,9 @@ def render_movie_card(movie: dict[str, Any], idx: int):
         ''', unsafe_allow_html=True)
         
         if movie_id:
-            st.button("Chi tiết", key=f"btn_{movie_id}_{idx}", on_click=navigate, args=("detail", movie_id), use_container_width=True)
+            st.button("Chi tiết", key=f"btn_{movie_id}_{idx}", on_click=navigate, args=("detail", movie_id), width="stretch")
         else:
-            st.button("Lỗi ID", key=f"btn_err_{idx}", disabled=True, use_container_width=True)
+            st.button("Lỗi ID", key=f"btn_err_{idx}", disabled=True, width="stretch")
 
 def render_movie_row(title: str, movies: list[dict[str, Any]], row_id: int):
     if not movies:
@@ -238,7 +241,6 @@ def render_hero_banner():
         
     movies = trending_data["movies"]
     
-    # CSS cấu hình thanh trượt và z-index cho nút bấm
     st.markdown("""
 <style>
 div[data-testid="stHorizontalBlock"]:has(.hero-carousel-marker) {
@@ -303,16 +305,14 @@ div.stButton > button {
             st.markdown(html_bg, unsafe_allow_html=True)
             
             # Nút bấm tương tác
-            btn_space, btn_xem, btn_them, padding_right = st.columns([0.06, 0.18, 0.2, 0.56])
+            btn_space, btn_xem, padding_right = st.columns([0.06, 0.2, 0.74])
             
             with btn_xem:
                 if movie_id:
-                    st.button("Xem chi tiết", type="primary", key=f"hero_det_{idx}_{movie_id}", on_click=navigate, args=("detail", movie_id), use_container_width=True)
+                    st.button("Xem chi tiết", type="primary", key=f"hero_det_{idx}_{movie_id}", on_click=navigate, args=("detail", movie_id), width="stretch")
                 else:
-                    st.button("Xem chi tiết", type="primary", key=f"hero_err_{idx}", disabled=True, use_container_width=True)
+                    st.button("Xem chi tiết", type="primary", key=f"hero_err_{idx}", disabled=True, width="stretch")
                     
-            with btn_them:
-                st.button("Thêm Watchlist", key=f"hero_wl_{idx}_{movie_id}", use_container_width=True)
 
 
 def render_home_page(movies_df: pd.DataFrame = None):
@@ -436,7 +436,7 @@ def render_search_page():
 def render_history_page():
     st.markdown("<h2 style='color: white; font-weight: 800;'>Lịch sử xem phim của bạn</h2>", unsafe_allow_html=True)
     
-    if st.button("Quay lại Trang chủ", use_container_width=False):
+    if st.button("Quay lại Trang chủ", width="content"):
         navigate("home")
         
     st.markdown("<hr style='border-color: #333;'>", unsafe_allow_html=True)
@@ -497,7 +497,7 @@ def render_history_page():
                     """, unsafe_allow_html=True)
                     
                     if movie_id:
-                        st.button("Xem chi tiết", key=f"hist_btn_{movie_id}_{i}_{j}", on_click=navigate, args=("detail", movie_id), use_container_width=True)
+                        st.button("Xem chi tiết", key=f"hist_btn_{movie_id}_{i}_{j}", on_click=navigate, args=("detail", movie_id), width="stretch")
 
 def render_detail_page(movie_id):
     st.markdown("""
@@ -521,20 +521,10 @@ def render_detail_page(movie_id):
     
     st.button("Quay lại Trang chủ", on_click=navigate, args=("home",), type="secondary")
     
-    all_movies_data = api_get("/movies")
-    if not all_movies_data or "movies" not in all_movies_data:
-        st.error("Lỗi kết nối Server!")
-        return
-        
-    movie = None
-    for m in all_movies_data["movies"]:
-        raw_id = m.get("movie_id", m.get("movieId", m.get("id")))
-        if raw_id and str(int(float(raw_id))) == str(movie_id):
-            movie = m
-            break
-            
+    movie = api_get(f"/movies/{movie_id}")
+    
     if not movie:
-        st.warning("Không tìm thấy thông tin bộ phim này.")
+        st.warning("Không tìm thấy thông tin chi tiết bộ phim này.")
         return
 
     title = movie.get("title", "Untitled")
@@ -547,23 +537,93 @@ def render_detail_page(movie_id):
     overview = movie.get("overview", "Chưa có thông tin tóm tắt cho bộ phim này.")
     director = movie.get("director", "Đang cập nhật")
     cast = str(movie.get("cast", "Đang cập nhật")).replace("|", ", ")
-    country = movie.get("country", "Đang cập nhật")
     
     st.markdown("<br>", unsafe_allow_html=True)
     c1, c2 = st.columns([1, 2.5], gap="large")
     
     with c1:
         if poster_url:
-            st.image(poster_url, use_container_width=True, clamp=True)
+            st.image(poster_url, width="stretch", clamp=True)
             
     with c2:
         st.markdown(f"<h1 style='font-size: 3rem; margin-bottom: 0;'>{title}</h1>", unsafe_allow_html=True)
         st.markdown(f"<p style='color: #F5C518; font-size: 1.3rem; font-weight: bold;'>⭐{score:.1f} <span style='color: #aaa; font-weight: normal; font-size: 1rem;'>({vote_count} đánh giá)</span></p>", unsafe_allow_html=True)
+        st.markdown(f"<p style='font-size: 1.1rem; color: #ddd;'><b>Đạo diễn:</b> {director}</p>", unsafe_allow_html=True)
+        st.markdown(f"<p style='font-size: 1.1rem; color: #ddd;'><b>Diễn viên:</b> {cast}</p>", unsafe_allow_html=True)
         st.markdown(f"<p style='font-size: 1.1rem; color: #ddd;'><b>Thể loại:</b> {genres}</p>", unsafe_allow_html=True)
         
-        st.markdown(f"<p style='color: #aaa; line-height: 1.6;'>{overview}</p>", unsafe_allow_html=True)
+        st.markdown(f"<p style='color: #aaa; line-height: 1.6; margin-top: 15px;'>{overview}</p>", unsafe_allow_html=True)
         
-        st.button("Thêm vào Watchlist", key="detail_watch", type="primary")
+        # ===============================
+        # KHOANG ĐÁNH GIÁ PHIM (RATING)
+        # ===============================
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("<h4 style='margin-bottom: 10px;'>Đánh giá của bạn</h4>", unsafe_allow_html=True)
+        
+        # 1. Trích xuất chuẩn user_id từ biến session
+        selected_user = st.session_state.get("current_user", "Guest")
+        user_id = None
+        if selected_user != "Guest":
+            try:
+                user_id = int(str(selected_user).replace("User", "").strip())
+            except ValueError:
+                pass
+                
+        # 2. Logic hiển thị thanh đánh giá chặn Reload & Chặn đánh giá lại
+        if not user_id:
+            st.info("Vui lòng chọn User trên thanh Menu để đánh giá phim này.")
+        else:
+            # Gọi API kiểm tra lịch sử rate
+            existing_rating_data = api_get(f"/rate/{user_id}/{movie_id}")
+            existing_rating = existing_rating_data.get("rating") if existing_rating_data else None
+            
+            rating_options = [5.0, 4.5, 4.0, 3.5, 3.0, 2.5, 2.0, 1.5, 1.0, 0.5]
+            
+            with st.form(key=f"form_rating_{movie_id}", border=False):
+                col_rate, col_btn, _ = st.columns([1.2, 1.2, 4], vertical_alignment="center")
+                
+                with col_rate:
+                    if existing_rating is not None and existing_rating in rating_options:
+                        default_idx = rating_options.index(existing_rating)
+                        user_rating = st.selectbox(
+                            "Chấm điểm", 
+                            options=rating_options,
+                            index=default_idx,
+                            format_func=lambda x: f"{x} ⭐",
+                            label_visibility="collapsed",
+                        )
+                    else:
+                        # Chưa đánh giá: Mở Menu bình thường
+                        user_rating = st.selectbox(
+                            "Chấm điểm", 
+                            options=rating_options,
+                            format_func=lambda x: f"{x} ⭐",
+                            label_visibility="collapsed"
+                        )
+                
+                with col_btn:
+                    # Đổi trạng thái Nút bấm tùy theo việc đã rate hay chưa
+                    if existing_rating is not None:
+                        submit_btn = st.form_submit_button("Đã đánh giá", type="secondary", disabled=True, width="stretch")
+                    else:
+                        submit_btn = st.form_submit_button("Gửi đánh giá", type="primary", width="stretch")
+                    
+                # Chỉ xử lý gửi data khi nút Submit được bấm
+                if submit_btn and existing_rating is None:
+                    payload = {
+                        "user_id": user_id,
+                        "movie_id": int(float(movie_id)),
+                        "rating": float(user_rating)
+                    }
+                    response = api_post("/rate", payload)
+                    
+                    if response and response.get("status") == "success":
+                        st.toast(f"Đã ghi nhận đánh giá {user_rating} ⭐ thành công!")
+                        # Tải lại trang ngay lập tức để Khóa form
+                        st.rerun()
+                    else:
+                        st.toast("Error: Có lỗi xảy ra, chưa thể gửi đánh giá.")
+        # ====================================
 
     st.markdown("<hr style='border-color: #333; margin: 3rem 0 1rem 0;'>", unsafe_allow_html=True)
 
@@ -586,7 +646,7 @@ def render_detail_page(movie_id):
 # 4. HÀM MAIN CHẠY ỨNG DỤNG
 # ==========================================
 def main() -> None:
-    st.set_page_config(page_title="Mini IMDb", layout="wide")
+    st.set_page_config(page_title="movierec", layout="wide")
     
     init_session_state()
     

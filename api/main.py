@@ -6,6 +6,9 @@ import pandas as pd
 from functools import lru_cache
 from typing import Any
 
+import time
+import csv
+
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
@@ -103,6 +106,10 @@ class RecommendResponse(BaseModel):
 class ModelInfoResponse(BaseModel):
     model_info: dict[str, Any]
 
+class RatingRequest(BaseModel):
+    user_id: int
+    movie_id: int
+    rating: float = Field(..., ge=0.5, le=5.0)
 
 app = FastAPI(
     title="Hybrid Movie Recommendation API",
@@ -218,6 +225,38 @@ def movies(search: str | None = None) -> dict[str, list[dict[str, Any]]]:
         return {"movies": filtered_movies}
     return {"movies": all_movies}
 
+@app.post("/rate")
+def submit_rating(req: RatingRequest) -> dict[str, str]:
+    """Ghi nhận điểm đánh giá của User và lưu thẳng vào file ratings.csv"""
+    ratings_path = "data/ml-latest-small/ratings.csv"
+    timestamp = int(time.time())
+    
+    try:
+        # Mở file CSV ở chế độ 'a' (append - ghi thêm vào cuối file)
+        with open(ratings_path, mode='a', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            # Ghi đúng chuẩn format của MovieLens: userId,movieId,rating,timestamp
+            writer.writerow([req.user_id, req.movie_id, req.rating, timestamp])
+            
+        return {"status": "success", "message": "Đã lưu đánh giá thành công!"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lỗi khi lưu dữ liệu: {e}")
+
+@app.get("/rate/{user_id}/{movie_id}")
+def check_user_rating(user_id: int, movie_id: int) -> dict[str, Any]:
+    """Kiểm tra xem User đã đánh giá phim này chưa (đọc trực tiếp từ CSV)"""
+    ratings_path = "data/ml-latest-small/ratings.csv"
+    try:
+        if os.path.exists(ratings_path):
+            df = pd.read_csv(ratings_path)
+            match = df[(df['userId'] == user_id) & (df['movieId'] == movie_id)]
+            if not match.empty:
+                return {"rating": float(match.iloc[-1]['rating'])}
+    except Exception as e:
+        print(f"Lỗi đọc file ratings: {e}")
+        
+    return {"rating": None}
+
 @app.get("/movies/trending")
 def trending_movies(top_k: int = 15) -> dict[str, list[dict[str, Any]]]:
     all_movies = get_movies_with_scores()
@@ -247,22 +286,51 @@ def genre_movies(genre: str, top_k: int = 15) -> dict[str, list[dict[str, Any]]]
 
 @app.get("/movies/{movie_id}")
 def movie_details(movie_id: str) -> dict[str, Any]:
+    # 1. Bốc dữ liệu CỐT LÕI (Title, Genres) từ bộ data chuẩn trước
     movies_df = get_recommender().movies
-    matched_movie = movies_df[movies_df['movieId'].astype(str) == str(movie_id)]
+    matched_base = movies_df[movies_df['movieId'].astype(str) == str(movie_id)]
     
-    if matched_movie.empty:
+    if matched_base.empty:
         raise HTTPException(status_code=404, detail="Không tìm thấy phim")
         
-    movie_dict = matched_movie.iloc[0].to_dict()
+    # Tạo dictionary nền tảng
+    base_dict = matched_base.iloc[0].to_dict()
+    
+    # 2. Quét tìm file enriched_movies.csv để ĐẮP THÊM thông tin
+    enriched_path = "data/ml-latest-small/enriched_movies.csv"
+    if not os.path.exists(enriched_path):
+        enriched_path = "data/enriched_movies.csv"
+    if not os.path.exists(enriched_path):
+        enriched_path = "enriched_movies.csv"
+
+    if os.path.exists(enriched_path):
+        try:
+            df = pd.read_csv(enriched_path)
+            matched_enriched = df[df['movieId'].astype(str) == str(movie_id)]
+            if not matched_enriched.empty:
+                enriched_dict = matched_enriched.iloc[0].to_dict()
+                # Gộp thông tin: Đắp đạo diễn, diễn viên, tóm tắt... vào base_dict
+                base_dict.update(enriched_dict)
+        except Exception as e:
+            print(f"Lỗi đọc file enriched_movies: {e}")
+
+    # 3. Làm sạch dữ liệu (Xử lý các ô trống/NaN)
     cleaned_movie = {}
-    for k, v in movie_dict.items():
+    for k, v in base_dict.items():
         if pd.isna(v) or str(v).strip().lower() in ["nan", ""]:
-            if k == "overview":
-                cleaned_movie[k] = "Chưa có thông tin tóm tắt cho bộ phim này."
-            else:
-                cleaned_movie[k] = "Đang cập nhật"
+            if k == "overview": cleaned_movie[k] = "Chưa có thông tin tóm tắt cho bộ phim này."
+            else: cleaned_movie[k] = "Đang cập nhật"
         else:
             cleaned_movie[k] = v
+
+    # 4. Gắn thêm điểm số rating thực tế
+    all_movies = get_movies_with_scores()
+    for m in all_movies:
+        if str(int(float(m.get("movieId", m.get("movie_id", m.get("id", 0)))))) == str(movie_id):
+            cleaned_movie["score"] = m.get("score", 0.0)
+            cleaned_movie["vote_count"] = m.get("vote_count", 0)
+            break
+
     return cleaned_movie
 
 @app.get("/movies/{movie_id}/similar")
