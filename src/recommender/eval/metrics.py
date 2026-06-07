@@ -6,6 +6,12 @@ from typing import Callable
 
 import numpy as np
 
+# mục tiêu: - rmse: tính toán root mean squared error giữa y_true và y_pred
+#          - precision_recall_ndcg_mrr_at_k: tính toán precision, recall, ndcg và mrr tại k cho các recommendations so với ground truth
+#          - minmax: chuẩn hóa min-max cho một mảng
+#          - top_k_from_scores: lấy top k index từ một mảng điểm
+#          - evaluate_score_fn: đánh giá một hàm điểm theo các metrics ranking,
+#            trong đó masking các item đã tương tác trong tập train  để tránh đánh giá không công bằng    
 
 def rmse(y_true: np.ndarray, y_pred: np.ndarray) -> float:
     y_true = np.asarray(y_true, dtype=np.float64)
@@ -29,17 +35,24 @@ def precision_recall_ndcg_mrr_at_k(
         if not truth:
             continue
         top_items = recommendations.get(user, [])[:k]
+        # neu k = 4, truth = {2, 3}, top_items = [1, 2, 4, 5], 
+        # thi hits = [0.0, 1.0, 0.0, 0.0]
         hits = np.array([1.0 if item in truth else 0.0 for item in top_items], dtype=np.float64)
-
+        
+        # trong top-k, co bao nhieu item dung (hits.sum()) chia cho k de tinh precision,
+        #  chia cho so luong item trong truth de tinh recall
         precisions.append(float(hits.sum() / max(k, 1)))
         recalls.append(float(hits.sum() / len(truth)))
-
+        # tinh dcg = sum(hits[i] / log2(i+2)) cho i tu 0 den k-1,
+        # sau do tinh idcg = sum(1.0 / log2(i+2)) cho i tu 0 den min(len(truth), k)-1, 
+        # cuoi cung tinh ndcg = dcg / idcg neu idcg > 0, nguoc lai la 0.0
         discounts = 1.0 / np.log2(np.arange(2, len(hits) + 2))
         dcg = float((hits * discounts).sum())
         ideal_len = min(len(truth), k)
         ideal = float((1.0 / np.log2(np.arange(2, ideal_len + 2))).sum())
         ndcgs.append(dcg / ideal if ideal > 0 else 0.0)
-
+        # tinh mrr = 1 / (index + 1) neu co hit dau tien tai index, 
+        # nguoc lai la 0.0, chi quan tam den hit dau tien de tinh mrr
         first_hit = np.where(hits > 0)[0]
         mrrs.append(float(1.0 / (first_hit[0] + 1)) if first_hit.size else 0.0)
 
@@ -53,7 +66,7 @@ def precision_recall_ndcg_mrr_at_k(
         "mrr": float(np.mean(mrrs)),
     }
 
-
+# min max chuẩn hóa một mảng về khoảng [0, 1], nếu max = min thì trả về mảng 0 để tránh chia cho 0
 def minmax(values: np.ndarray, axis: int | None = None) -> np.ndarray:
     values = np.asarray(values, dtype=np.float32)
     mins = np.min(values, axis=axis, keepdims=True)
@@ -61,7 +74,8 @@ def minmax(values: np.ndarray, axis: int | None = None) -> np.ndarray:
     denom = np.maximum(maxs - mins, 1e-8)
     return (values - mins) / denom
 
-
+# lấy top k index từ một mảng điểm, nếu mảng rỗng thì trả về list rỗng, 
+# nếu k lớn hơn kích thước mảng thì trả về tất cả index đã được sắp xếp theo điểm giảm dần
 def top_k_from_scores(scores: np.ndarray, k: int) -> list[int]:
     if scores.size == 0:
         return []
@@ -69,7 +83,6 @@ def top_k_from_scores(scores: np.ndarray, k: int) -> list[int]:
     candidate_idx = np.argpartition(-scores, kth=k - 1)[:k]
     ordered = candidate_idx[np.argsort(-scores[candidate_idx])]
     return [int(item) for item in ordered]
-
 
 def evaluate_score_fn(
     num_users: int,
@@ -92,6 +105,7 @@ def evaluate_score_fn(
 
         scores = scores.copy()
         for row_idx, user in enumerate(batch_users):
+            # masking các item đã tương tác trong tập train bằng cách gán điểm của chúng thành -inf để tránh được chọn làm recommendation,
             seen = train_user_items.get(int(user), set())
             if seen:
                 scores[row_idx, list(seen)] = -np.inf

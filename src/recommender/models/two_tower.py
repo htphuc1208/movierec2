@@ -12,10 +12,17 @@ from sklearn.preprocessing import normalize
 
 from recommender.data.tmdb import ENRICHED_TEXT_FIELDS
 
+# two-tower đơn giản:
 
+# Item tower → biến metadata phim thành embedding
+# User tower → biến lịch sử user thành profile vector
+
+# cac che do embedding metadata: - sbert: sử dụng mô hình Sentence-BERT để mã hóa văn bản thành vector nhúng có chuẩn hóa L2
+# - tfidf: sử dụng TF-IDF để chuyển đổi văn bản thành ma trận
 EmbeddingBackend = Literal["sbert", "tfidf", "auto"]
 
-
+# ham nay gom cac truong metadata thanh 1 van ban duy nhat cho tung phim, sau do ma hoa van ban do thanh vector embedding bang sbert hoac tfidf, 
+# cuoi cung la chuan hoa vector embedding bang L2
 def build_item_text(catalog: pd.DataFrame) -> list[str]:
     """Build a text document per movie from enriched metadata."""
     documents: list[str] = []
@@ -29,7 +36,10 @@ def build_item_text(catalog: pd.DataFrame) -> list[str]:
         documents.append(" . ".join(part for part in parts if part))
     return documents
 
-
+# ham nay bien text metadata thanh vector embedding, 
+# backend "sbert" su dung Sentence-BERT de ma hoa van ban, 
+# backend "tfidf" su dung TF-IDF de chuyen van ban thanh ma tran, 
+# sau do giam chieu bang SVD neu can, cuoi cung chuan hoa vector bang L2
 def encode_item_texts(
     catalog: pd.DataFrame,
     backend: EmbeddingBackend = "sbert",
@@ -59,9 +69,10 @@ def encode_item_texts(
             show_progress_bar=True,
             convert_to_numpy=True,
             normalize_embeddings=True,
-        )
+        ) # -> shape (num_movies, embedding_dim), da duoc chuan hoa bang L2
         return embeddings.astype(np.float32)
 
+    # bien text phim thanh vector embedding bang TF-IDF, giam chieu bang SVD neu can, sau do chuan hoa bang L2
     vectorizer = TfidfVectorizer(max_features=5000, ngram_range=(1, 2), min_df=1)
     matrix = vectorizer.fit_transform(documents)
     max_components = max(1, min(fallback_dim, matrix.shape[0] - 1, matrix.shape[1] - 1))
@@ -71,7 +82,7 @@ def encode_item_texts(
         dense = TruncatedSVD(n_components=max_components, random_state=42).fit_transform(matrix).astype(np.float32)
     return normalize(dense).astype(np.float32)
 
-
+# tao vector profile cho user bang cach trung binh cac embedding cua item ma user da tuong tac, sau do chuan hoa bang L2
 def build_user_profiles(train_interactions: pd.DataFrame, item_embeddings: np.ndarray, num_users: int) -> np.ndarray:
     """Average positive item embeddings into user preference vectors."""
     dim = item_embeddings.shape[1]
@@ -86,6 +97,6 @@ def build_user_profiles(train_interactions: pd.DataFrame, item_embeddings: np.nd
     profiles[nonzero] /= counts[nonzero, None]
     return normalize(profiles).astype(np.float32)
 
-
+# tinh score cosine giua user_profiles va item_embeddings, ket qua la ma tran score voi shape (num_users, num_items)
 def cosine_score_matrix(user_profiles: np.ndarray, item_embeddings: np.ndarray) -> np.ndarray:
     return (user_profiles @ item_embeddings.T).astype(np.float32)

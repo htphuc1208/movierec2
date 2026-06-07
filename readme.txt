@@ -98,7 +98,42 @@ Mặc định script lưu thêm lịch sử item đã xem trong hybrid_config.js
     --no-store-train-user-items
 
 
-5. Chạy backend FastAPI
+5. So sánh mô hình
+------------------
+Runner comparison không thay đổi artifact/API hiện tại. Nó chạy nhiều mô hình trên cùng split train/val/test và xuất báo cáo ranking metrics.
+
+Chạy core suite trên cả MovieLens và Letterboxd processed:
+
+    python3 scripts/compare_models.py \
+      --dataset both \
+      --movielens-dir data/raw/ml-latest-small \
+      --letterboxd-dir data/processed/letterboxd \
+      --content-backend tfidf \
+      --models core
+
+Output mặc định:
+
+    reports/comparison/comparison_results.csv
+    reports/comparison/comparison_results.json
+    reports/comparison/comparison_summary.md
+
+Core suite gồm random, popularity, ItemKNN, UserKNN, SVD ranking, EASE, TF-IDF/SBERT content-only, BPR-MF, LightGCN-only, learned Two-Tower, weighted hybrid và learned SGD hybrid ranker. Nếu interpreter thiếu torch thì các model Torch sẽ được ghi skipped_dependency, không làm fail toàn bộ runner.
+
+Chạy full suite nếu đã cài optional native packages:
+
+    pip install -r requirements-optional.txt
+    python3 scripts/compare_models.py --dataset both --models full --content-backend tfidf
+
+Full suite bật thêm SLIM ElasticNet, implicit ALS, LightFM WARP và NeuMF. Với dataset lớn, giới hạn SLIM/EASE để tránh chạy quá lâu:
+
+    python3 scripts/compare_models.py --models full --max-slim-items 1000 --max-ease-items 8000
+
+Dùng SBERT khi có GPU hoặc chạy Kaggle:
+
+    python3 scripts/compare_models.py --dataset both --content-backend sbert --device cuda
+
+
+6. Chạy backend FastAPI
 -----------------------
 
     PYTHONPATH=src:. uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
@@ -121,7 +156,7 @@ Ví dụ session cold-start:
       -d '{"top_k": 10, "session_context": ["tmdb_862", "ml_1"]}'
 
 
-6. Chạy giao diện Streamlit
+7. Chạy giao diện Streamlit
 ---------------------------
 Mở terminal thứ hai:
 
@@ -132,7 +167,7 @@ Truy cập:
     http://localhost:8501
 
 
-7. Chạy bằng Docker Compose
+8. Chạy bằng Docker Compose
 ---------------------------
 
     cp .env.example .env
@@ -145,7 +180,7 @@ Các cổng:
 Lưu ý: Docker image cài torch và sentence-transformers nên lần build đầu có thể lâu.
 
 
-8. Chạy tests
+9. Chạy tests
 -------------
 
     PYTHONPATH=src:. pytest
@@ -153,11 +188,12 @@ Lưu ý: Docker image cài torch và sentence-transformers nên lần build đ�
 Nếu môi trường chưa cài torch hoặc fastapi, các test tương ứng sẽ tự skip.
 
 
-9. Cấu trúc thư mục
+10. Cấu trúc thư mục
 -------------------
 
     src/recommender/data        Đọc MovieLens, split dữ liệu, TMDb enrichment
-    src/recommender/models      SVD, LightGCN, BPR loss, Two-Tower embeddings
+    src/recommender/experiments Runner so sánh mô hình offline
+    src/recommender/models      SVD, KNN, EASE, MF, LightGCN, Two-Tower, hybrid ranker
     src/recommender/eval        Precision@K, Recall@K, NDCG@K, MRR, RMSE
     src/recommender/inference   Load artifacts và sinh recommendations
     api                         FastAPI backend
@@ -168,7 +204,7 @@ Nếu môi trường chưa cài torch hoặc fastapi, các test tương ứng s�
     reports                     Báo cáo ngắn
 
 
-10. Ghi chú triển khai Kaggle
+11. Ghi chú triển khai Kaggle
 -----------------------------
 - Lưu TMDB_API_KEY bằng Kaggle Secrets.
 - Dùng GPU accelerator nếu train LightGCN và SBERT trên tập lớn.
@@ -179,7 +215,7 @@ Nếu môi trường chưa cài torch hoặc fastapi, các test tương ứng s�
 Sau đó giải nén vào repo local và chạy API/UI.
 
 
-11. Chạy riêng bước enrich TMDb trên Kaggle
+12. Chạy riêng bước enrich TMDb trên Kaggle
 -------------------------------------------
 Khi mạng local bị reset/refused với api.themoviedb.org, có thể submit riêng bước enrich lên Kaggle.
 
@@ -210,7 +246,7 @@ File cần lấy về local:
     kaggle_outputs/data/processed/tmdb_cache.json
 
 
-12. Tích hợp dữ liệu Letterboxd
+13. Tích hợp dữ liệu Letterboxd
 ------------------------------
 Dữ liệu Letterboxd không có timestamp hành vi đủ tin cậy. File created_at là thời điểm crawler ghi dữ liệu, không phải thời điểm người dùng xem/chấm phim, nên pipeline dùng split random ổn định theo từng user thông qua timestamp synthetic.
 
