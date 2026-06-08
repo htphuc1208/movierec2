@@ -74,7 +74,7 @@ class MetadataEncoder:
                 if self.backend == "sbert":
                     raise
 
-        self._tfidf = TfidfVectorizer(stop_words="english", ngram_range=(1, 2), min_df=1)
+        self._tfidf = TfidfVectorizer(stop_words="english", ngram_range=(1, 2), min_df=2, max_df=0.85)
         matrix = self._tfidf.fit_transform(texts).astype(np.float32)
         return matrix.toarray()
 
@@ -86,7 +86,22 @@ class MetadataEncoder:
         if "movieId" not in normalised.columns:
             raise ValueError("movies must contain movieId or movie_id")
 
-        for column in ["title", "genres", "overview", "tagline", "director", "cast", "tags"]:
+        for column in [
+            "title",
+            "genres",
+            "overview",
+            "tagline",
+            "director",
+            "cast",
+            "tags",
+            "keywords",
+            "tag_genome_tags",
+            "original_language",
+            "production_companies",
+            "production_countries",
+            "collection_name",
+            "certification",
+        ]:
             if column not in normalised.columns:
                 normalised[column] = ""
             normalised[column] = normalised[column].fillna("").astype(str)
@@ -114,6 +129,13 @@ class MetadataEncoder:
                 str(getattr(row, "tagline", "")),
                 str(getattr(row, "director", "")),
                 str(getattr(row, "cast", "")).replace("|", " "),
+                str(getattr(row, "keywords", "")).replace("|", " "),
+                str(getattr(row, "tag_genome_tags", "")).replace("|", " "),
+                str(getattr(row, "original_language", "")),
+                str(getattr(row, "production_companies", "")).replace("|", " "),
+                str(getattr(row, "production_countries", "")).replace("|", " "),
+                str(getattr(row, "collection_name", "")),
+                str(getattr(row, "certification", "")),
             ]
             texts.append(" ".join(parts))
         return texts

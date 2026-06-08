@@ -1,0 +1,13 @@
+{
+  "dataset": "letterboxd-full",
+  "data_dir": "data/letterboxd-full",
+  "protocol": "per_user_temporal_80_10_10_pos4_full",
+  "profile": "full",
+  "completed": [
+    "recbole_atomic_split",
+    "content",
+    "recbole_report"
+  ],
+  "skipped": {},
+  "leaderboard": "artifacts/leaderboards/letterboxd-full.csv"
+}

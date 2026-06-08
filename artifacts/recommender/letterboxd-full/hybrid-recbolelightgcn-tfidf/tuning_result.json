@@ -1,0 +1,134 @@
+{
+  "dataset": "letterboxd-full",
+  "cf_model": "RecBoleLightGCN",
+  "content_backend": "tfidf",
+  "weights": {
+    "collaborative": 0.5,
+    "content": 0.3181818181818181,
+    "popularity": 0.18181818181818182
+  },
+  "validation": {
+    "precision@10": 0.025063291139240506,
+    "recall@10": 0.0926896450947084,
+    "ndcg@10": 0.06727947045502033,
+    "mrr@10": 0.08793148483021901
+  },
+  "validation_segments": {
+    "warm_interactions": 2968,
+    "cold_interactions": 434
+  },
+  "test": {
+    "precision@10": 0.009195402298850575,
+    "recall@10": 0.033970078452837074,
+    "ndcg@10": 0.02593016446635522,
+    "mrr@10": 0.038328772121875576,
+    "rmse": 1.740047574043274
+  },
+  "test_segments": {
+    "warm_interactions": 2657,
+    "cold_interactions": 745,
+    "warm": {
+      "precision@10": 0.009452736318407961,
+      "recall@10": 0.03634209902866619,
+      "ndcg@10": 0.028360536472749512,
+      "mrr@10": 0.04049790728895207
+    },
+    "cold": {
+      "precision@10": 0.00101010101010101,
+      "recall@10": 0.010101010101010102,
+      "ndcg@10": 0.003858635815185487,
+      "mrr@10": 0.001984126984126984
+    }
+  },
+  "model_info": {
+    "model_source": "artifact",
+    "model_name": "recbole-LightGCN",
+    "dataset": "letterboxd-full",
+    "artifact_path": "artifacts/recommender/letterboxd-full/recbole-lightgcn",
+    "weights": {
+      "collaborative": 0.5,
+      "content": 0.3181818181818181,
+      "popularity": 0.18181818181818182
+    },
+    "positive_threshold": 4.0,
+    "collaborative_mode": "embedding",
+    "collaborative_engine": "recbole",
+    "metrics": {
+      "precision@10": 0.0108,
+      "precision@20": 0.0087,
+      "recall@10": 0.031,
+      "recall@20": 0.0467,
+      "ndcg@10": 0.0221,
+      "ndcg@20": 0.0283,
+      "mrr@10": 0.0329,
+      "mrr@20": 0.0358
+    },
+    "user_count": 530,
+    "movie_count": 6720
+  },
+  "artifact_dir": "artifacts/recommender/letterboxd-full/hybrid-recbolelightgcn-tfidf",
+  "manifest": {
+    "artifact_version": 1,
+    "created_at": "2026-06-03T06:05:46.886662+00:00",
+    "dataset": "letterboxd-full",
+    "model_name": "hybrid-recbolelightgcn-tfidf",
+    "model_source": "artifact",
+    "positive_threshold": 4.0,
+    "weights": {
+      "collaborative": 0.5,
+      "content": 0.3181818181818181,
+      "popularity": 0.18181818181818182
+    },
+    "collaborative": {
+      "mode": "embedding",
+      "engine": "recbole",
+      "factors": 64
+    },
+    "content": {
+      "backend": "tfidf"
+    },
+    "files": {
+      "collaborative": "collaborative.npz"
+    },
+    "metrics": {
+      "validation": {
+        "precision@10": 0.025063291139240506,
+        "recall@10": 0.0926896450947084,
+        "ndcg@10": 0.06727947045502033,
+        "mrr@10": 0.08793148483021901
+      },
+      "test": {
+        "precision@10": 0.009195402298850575,
+        "recall@10": 0.033970078452837074,
+        "ndcg@10": 0.02593016446635522,
+        "mrr@10": 0.038328772121875576,
+        "rmse": 1.740047574043274
+      },
+      "test_segments": {
+        "warm_interactions": 2657,
+        "cold_interactions": 745,
+        "warm": {
+          "precision@10": 0.009452736318407961,
+          "recall@10": 0.03634209902866619,
+          "ndcg@10": 0.028360536472749512,
+          "mrr@10": 0.04049790728895207
+        },
+        "cold": {
+          "precision@10": 0.00101010101010101,
+          "recall@10": 0.010101010101010102,
+          "ndcg@10": 0.003858635815185487,
+          "mrr@10": 0.001984126984126984
+        }
+      }
+    },
+    "tuning": {
+      "primary_metric": "ndcg@10",
+      "tie_breakers": [
+        "mrr@10",
+        "recall@10",
+        "precision@10"
+      ],
+      "candidate_count": 123
+    }
+  }
+}

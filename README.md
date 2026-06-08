@@ -127,14 +127,25 @@ model.recommend_similar_movies(movie_id=1, top_k=5)
 model.recommend_for_user(user_id=104, user_history=bundle.ratings, top_k=5)
 ```
 
-For SBERT experiments, install `requirements-ml.txt` and use `SBERTRecommender`. `TwoTowerModel` is also available as a small PyTorch projection layer for SBERT/user-profile vectors, but the default content runtime remains artifact-light TF-IDF. Generated vectors and similarity matrices should be saved under `artifacts/`.
+For SBERT experiments, install `requirements-ml.txt` and use `SBERTRecommender`. `scripts/train_two_tower.py` can also train a metadata Two-Tower model with precomputed SBERT vectors and export both `collaborative.npz` and `content.npz` so the API/UI can load semantic content vectors without encoding text at startup:
+
+```bash
+python3 scripts/train_two_tower.py \
+  --data-dir data/ml-latest-small \
+  --content-backend sbert \
+  --recommender-artifact-dir artifacts/recommender/ml-latest-small/two-tower-sbert \
+  --dataset-name ml-latest-small
+```
+
+The default content runtime remains artifact-light TF-IDF unless `--content-backend sbert` or an artifact with `content.npz` is provided.
 
 ## Use MovieLens Data
 
-Download MovieLens latest-small when network access is available:
+Download MovieLens latest-small for local development, or MovieLens latest full for the PDF-scale experiment:
 
 ```bash
 python3 scripts/download_movielens.py --variant ml-latest-small --output-dir data
+python3 scripts/download_movielens.py --variant ml-latest --output-dir data
 ```
 
 Then run:
@@ -143,6 +154,29 @@ Then run:
 python3 scripts/train_baseline.py --data-dir data/ml-latest-small
 ```
 
+## Benchmark Pipeline And Leaderboards
+
+The shared benchmark protocol is `per_user_temporal_80_10_10_pos4_full`:
+per-user temporal split, `rating >= 4.0` positives, `topk=[10,20]`, and primary ranking metric `NDCG@10`.
+Leaderboard files are written to `artifacts/leaderboards/`. The CSV/JSON outputs include aggregate metrics plus `warm_*` and `cold_*` segment columns for local/API-loadable artifacts; RecBole aggregate-only rows leave segment columns empty.
+
+Current best rows:
+
+| dataset | best model | ndcg@10 | mrr@10 | artifact |
+| --- | --- | ---: | ---: | --- |
+| ml-latest-small | hybrid-bpr-tfidf | 0.0579 | 0.1007 | `artifacts/recommender/ml-latest-small/latest` |
+| letterboxd-full | hybrid-recbolelightgcn-tfidf | 0.0259 | 0.0383 | `artifacts/recommender/letterboxd-full/latest` |
+
+Run the full local pipeline:
+
+```bash
+python3 scripts/run_benchmark_pipeline.py --dataset ml-latest-small --data-dir data/ml-latest-small --profile full
+python3 scripts/prepare_letterboxd.py --raw-dir crawl/data/raw --output-dir data/letterboxd-full --source full
+python3 scripts/run_benchmark_pipeline.py --dataset letterboxd-full --data-dir data/letterboxd-full --profile full
+```
+
+The runner trains/evaluates the lightweight hybrid baseline, pure TF-IDF content baseline, PyTorch SVD, native LightGCN, metadata TwoTower, tunes hybrid weights, writes dataset-scoped artifacts under `artifacts/recommender/{dataset}/`, and syncs `artifacts/recommender/latest` to the MovieLens best artifact by default. Use `--content-backend sbert` to tune LightGCN/SVD/BPR collaborative artifacts against SBERT content vectors instead of TF-IDF.
+
 ## RecBole Benchmark And Hybrid Tuning
 
 RecBole is isolated in a Python 3.10 trainer image because some pinned RecBole dependencies do not install cleanly in newer local Python versions.
@@ -150,10 +184,13 @@ RecBole is isolated in a Python 3.10 trainer image because some pinned RecBole d
 ```bash
 docker compose --profile train build trainer
 docker compose --profile train run --rm trainer python scripts/benchmark_recbole.py --data-dir data/ml-latest-small --models Pop,ItemKNN,BPR,LightGCN --top-k 10 20
-docker compose --profile train run --rm trainer python scripts/tune_hybrid.py --data-dir data/ml-latest-small --cf-model LightGCN --content-backend tfidf --output-dir artifacts/recommender/latest
+docker compose --profile train run --rm trainer python scripts/benchmark_recbole.py --data-dir data/letterboxd-full --dataset-name letterboxd-full --models Pop,ItemKNN,BPR,LightGCN --top-k 10 20
+python3 scripts/run_benchmark_pipeline.py --dataset ml-latest-small --data-dir data/ml-latest-small --profile full --models recbole,tune --skip-audit
+python3 scripts/run_benchmark_pipeline.py --dataset letterboxd-full --data-dir data/letterboxd-full --profile full --models recbole,tune --skip-audit
 ```
 
-Benchmark reports are written to `artifacts/benchmarks/`. The tuned hybrid artifact is written to `artifacts/recommender/latest/` and can be loaded by setting `MOVIEREC_ARTIFACT_DIR`.
+RecBole reports are written to `artifacts/benchmarks/`. The script writes pre-split atomic files with `benchmark_filename=["train","valid","test"]` so RecBole uses the same temporal split as the local trainers.
+Only BPR and LightGCN export API-loadable collaborative embeddings; Pop and ItemKNN appear in the leaderboard as benchmark rows only.
 
 Native PyTorch LightGCN training is also available:
 
@@ -166,7 +203,18 @@ python3 scripts/train_lightgcn.py \
   --dataset-name ml-latest-small
 ```
 
-The exported recommender artifact stores final LightGCN embeddings in the same `manifest.json` plus `collaborative.npz` format used by the API/UI.
+The exported recommender artifact stores final LightGCN embeddings in the same `manifest.json` plus `collaborative.npz` format used by the API/UI. It supports `--loss bpr` and `--loss warp`; WARP uses sampled violating negatives for top-heavy ranking optimization. To build the PDF-style LightGCN + SBERT hybrid, first export LightGCN, then tune it with SBERT content:
+
+```bash
+python3 scripts/tune_hybrid.py \
+  --data-dir data/ml-latest-small \
+  --cf-model LightGCN \
+  --cf-artifact-dir artifacts/recommender/lightgcn-ml-latest-small \
+  --content-backend sbert \
+  --output-dir artifacts/recommender/ml-latest-small/hybrid-lightgcn-sbert
+```
+
+For MovieLens latest full training on Kaggle, including WARP and SBERT commands, see [docs/kaggle_training.md](docs/kaggle_training.md).
 
 For the MovieLens 1M `.dat` format, place `movies.dat`, `ratings.dat`, and `users.dat` in `data/raw`, then run:
 
@@ -178,23 +226,30 @@ Processed CSV files are written to `data/processed` and are ignored by Git.
 
 ## Optional TMDb Enrichment
 
-Create a TMDb API key and run:
+Create a TMDb API key, put `TMDB_API_KEY=...` in `.env` or export it, then run:
 
 ```bash
 export TMDB_API_KEY=your_key
-python3 scripts/enrich_tmdb.py --data-dir data/ml-latest-small --limit 1000
+python3 scripts/prepare_tag_genome.py --data-dir data/ml-latest --genome-dir data/ml-latest --top-n 20 --min-relevance 0.35
+python3 scripts/enrich_tmdb.py --data-dir data/ml-latest --refresh-empty-columns overview,director,cast,keywords,release_date,runtime,production_companies,production_countries,certification,vote_average,vote_count --sleep 0.3
+python3 scripts/enrich_tmdb.py --data-dir data/letterboxd-full --retry-empty --search-missing-tmdb --sleep 0.3
 ```
 
-The enrichment script writes `enriched_movies.csv` with poster URL, overview, director, cast, and production metadata when the API is reachable.
+The enrichment script writes `enriched_movies.csv` with poster URL, overview, director, cast, genres, keywords, production companies/countries, runtime, certification, and TMDb vote metadata when the API is reachable. For Letterboxd, `--search-missing-tmdb` resolves missing `tmdbId` from `movies.csv` title/year first and updates `links.csv`.
+For the current data policy, warm/cold split handling, TMDb keywords, Tag Genome, and benchmark dataset choices, see [docs/data_strategy.md](docs/data_strategy.md).
 
 ## Letterboxd Crawl Data
 
-The `crawl/` folder contains an experimental Letterboxd crawler and CSV outputs merged from the remote crawl branch. This data is crawler-specific and is not a drop-in MovieLens replacement yet.
+The `crawl/` folder contains an experimental Letterboxd crawler and CSV outputs merged from the remote crawl branch. Convert it before benchmarking:
 
 ```bash
 python3 crawl/crawl_letterboxd_movie_centric.py --resume
 python3 crawl/enrich_tmdb.py --api-key "$TMDB_API_KEY" --data-dir crawl/data/raw
+python3 scripts/prepare_letterboxd.py --raw-dir crawl/data/raw --output-dir data/letterboxd-full --source full
+python3 scripts/enrich_tmdb.py --data-dir data/letterboxd-full --retry-empty --search-missing-tmdb --sleep 0.3
 ```
+
+The prepared `letterboxd-full` dataset currently contains 6720 canonical movies, 33946 ratings, and 551 users. TMDb enrichment is skipped when `TMDB_API_KEY` is absent; placeholder metadata is still written so audits and content models can run.
 
 ## Docker
 

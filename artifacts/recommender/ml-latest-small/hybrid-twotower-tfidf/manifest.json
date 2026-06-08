@@ -1,0 +1,64 @@
+{
+  "artifact_version": 1,
+  "created_at": "2026-06-03T08:32:59.753024+00:00",
+  "dataset": "ml-latest-small",
+  "model_name": "hybrid-twotower-tfidf",
+  "model_source": "artifact",
+  "positive_threshold": 4.0,
+  "weights": {
+    "collaborative": 0.2857142857142857,
+    "content": 0.5238095238095238,
+    "popularity": 0.19047619047619047
+  },
+  "collaborative": {
+    "mode": "embedding",
+    "engine": "torch-native",
+    "factors": 64
+  },
+  "content": {
+    "backend": "tfidf"
+  },
+  "files": {
+    "collaborative": "collaborative.npz"
+  },
+  "metrics": {
+    "validation": {
+      "precision@10": 0.03847517730496454,
+      "recall@10": 0.06484582041397456,
+      "ndcg@10": 0.06244534147351784,
+      "mrr@10": 0.1191714510863447
+    },
+    "test": {
+      "precision@10": 0.031737588652482274,
+      "recall@10": 0.05285194203839269,
+      "ndcg@10": 0.04907402526989376,
+      "mrr@10": 0.09163148711021052,
+      "rmse": 1.4845631122589111
+    },
+    "test_segments": {
+      "warm_interactions": 9146,
+      "cold_interactions": 947,
+      "warm": {
+        "precision@10": 0.031850533807829186,
+        "recall@10": 0.05375287214208307,
+        "ndcg@10": 0.04941059925198809,
+        "mrr@10": 0.09195757781167034
+      },
+      "cold": {
+        "precision@10": 0.0,
+        "recall@10": 0.0,
+        "ndcg@10": 0.0,
+        "mrr@10": 0.0
+      }
+    }
+  },
+  "tuning": {
+    "primary_metric": "ndcg@10",
+    "tie_breakers": [
+      "mrr@10",
+      "recall@10",
+      "precision@10"
+    ],
+    "candidate_count": 123
+  }
+}

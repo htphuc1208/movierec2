@@ -1,0 +1,2 @@
+model,best_valid_score,precision@10,recall@10,ndcg@10,mrr@10
+Pop,0.1418,0.07,0.7,0.2946,0.172

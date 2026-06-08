@@ -1,0 +1,148 @@
+{
+  "dataset": "ml-latest-small",
+  "cf_model": "LightGCN",
+  "content_backend": "tfidf",
+  "weights": {
+    "collaborative": 0.6470588235294118,
+    "content": 0.1764705882352941,
+    "popularity": 0.1764705882352941
+  },
+  "validation": {
+    "precision@10": 0.03953900709219858,
+    "recall@10": 0.07116384115662934,
+    "ndcg@10": 0.06829367704145073,
+    "mrr@10": 0.12959163570865698
+  },
+  "validation_segments": {
+    "warm_interactions": 9344,
+    "cold_interactions": 749
+  },
+  "test": {
+    "precision@10": 0.03439716312056738,
+    "recall@10": 0.058782449709003384,
+    "ndcg@10": 0.051144066655759414,
+    "mrr@10": 0.09245328154902623,
+    "rmse": 1.4535467624664307
+  },
+  "test_segments": {
+    "warm_interactions": 9146,
+    "cold_interactions": 947,
+    "warm": {
+      "precision@10": 0.03451957295373666,
+      "recall@10": 0.05966716820995296,
+      "ndcg@10": 0.05155265123368959,
+      "mrr@10": 0.0927822967858555
+    },
+    "cold": {
+      "precision@10": 0.0,
+      "recall@10": 0.0,
+      "ndcg@10": 0.0,
+      "mrr@10": 0.0
+    }
+  },
+  "model_info": {
+    "model_source": "artifact",
+    "model_name": "lightgcn-pytorch",
+    "dataset": "ml-latest-small",
+    "artifact_path": "artifacts/recommender/ml-latest-small/lightgcn",
+    "weights": {
+      "collaborative": 0.6470588235294118,
+      "content": 0.1764705882352941,
+      "popularity": 0.1764705882352941
+    },
+    "positive_threshold": 4.0,
+    "collaborative_mode": "embedding",
+    "collaborative_engine": "torch-native",
+    "metrics": {
+      "test": {
+        "train_loss": 0.23215351425684416,
+        "val_loss": 0.3937231719493866,
+        "precision_at_k": 0.026512455516014236,
+        "recall_at_k": 0.046552654890358564,
+        "ndcg_at_k": 0.044951973386755086,
+        "mrr_at_k": 0.085662034683387,
+        "all_precision_at_k": 0.026418439716312057,
+        "all_recall_at_k": 0.04583478051827734,
+        "all_ndcg_at_k": 0.0447071259741433,
+        "all_mrr_at_k": 0.08535826860294946,
+        "cold_precision_at_k": 0.0,
+        "cold_recall_at_k": 0.0,
+        "cold_ndcg_at_k": 0.0,
+        "cold_mrr_at_k": 0.0,
+        "train_item_count": 8236,
+        "catalog_item_count": 9742,
+        "cold_test_interactions": 947,
+        "warm_test_interactions": 9146,
+        "cold_positive_interactions": 359,
+        "best_epoch": 7
+      }
+    },
+    "user_count": 610,
+    "movie_count": 9742
+  },
+  "artifact_dir": "artifacts/recommender/ml-latest-small/hybrid-lightgcn-tfidf",
+  "manifest": {
+    "artifact_version": 1,
+    "created_at": "2026-06-03T08:32:23.834199+00:00",
+    "dataset": "ml-latest-small",
+    "model_name": "hybrid-lightgcn-tfidf",
+    "model_source": "artifact",
+    "positive_threshold": 4.0,
+    "weights": {
+      "collaborative": 0.6470588235294118,
+      "content": 0.1764705882352941,
+      "popularity": 0.1764705882352941
+    },
+    "collaborative": {
+      "mode": "embedding",
+      "engine": "torch-native",
+      "factors": 64
+    },
+    "content": {
+      "backend": "tfidf"
+    },
+    "files": {
+      "collaborative": "collaborative.npz"
+    },
+    "metrics": {
+      "validation": {
+        "precision@10": 0.03953900709219858,
+        "recall@10": 0.07116384115662934,
+        "ndcg@10": 0.06829367704145073,
+        "mrr@10": 0.12959163570865698
+      },
+      "test": {
+        "precision@10": 0.03439716312056738,
+        "recall@10": 0.058782449709003384,
+        "ndcg@10": 0.051144066655759414,
+        "mrr@10": 0.09245328154902623,
+        "rmse": 1.4535467624664307
+      },
+      "test_segments": {
+        "warm_interactions": 9146,
+        "cold_interactions": 947,
+        "warm": {
+          "precision@10": 0.03451957295373666,
+          "recall@10": 0.05966716820995296,
+          "ndcg@10": 0.05155265123368959,
+          "mrr@10": 0.0927822967858555
+        },
+        "cold": {
+          "precision@10": 0.0,
+          "recall@10": 0.0,
+          "ndcg@10": 0.0,
+          "mrr@10": 0.0
+        }
+      }
+    },
+    "tuning": {
+      "primary_metric": "ndcg@10",
+      "tie_breakers": [
+        "mrr@10",
+        "recall@10",
+        "precision@10"
+      ],
+      "candidate_count": 123
+    }
+  }
+}

@@ -30,6 +30,19 @@ class SVDTrainingResult:
     recall_at_k: float
     ndcg_at_k: float
     mrr_at_k: float
+    all_precision_at_k: float
+    all_recall_at_k: float
+    all_ndcg_at_k: float
+    all_mrr_at_k: float
+    cold_precision_at_k: float
+    cold_recall_at_k: float
+    cold_ndcg_at_k: float
+    cold_mrr_at_k: float
+    train_item_count: int
+    catalog_item_count: int
+    cold_test_interactions: int
+    warm_test_interactions: int
+    cold_positive_interactions: int
     best_epoch: int
 
 
@@ -219,6 +232,7 @@ def export_recommender_artifact(
     config: dict[str, Any],
     metrics: dict[str, Any],
     positive_threshold: float,
+    weights: dict[str, float] | None = None,
 ) -> Path:
     """Export PyTorch SVD weights into the lightweight API/UI artifact format."""
 
@@ -244,6 +258,7 @@ def export_recommender_artifact(
         global_mean=np.asarray([global_mean], dtype=np.float32),
     )
 
+    manifest_weights = weights or {"collaborative": 0.55, "content": 0.35, "popularity": 0.10}
     manifest = {
         "artifact_version": 1,
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -251,7 +266,7 @@ def export_recommender_artifact(
         "model_name": "svd-pytorch",
         "model_source": "pytorch_svd",
         "positive_threshold": positive_threshold,
-        "weights": {"collaborative": 0.55, "content": 0.35, "popularity": 0.10},
+        "weights": manifest_weights,
         "collaborative": {
             "mode": "funk_svd",
             "engine": "torch",
@@ -274,7 +289,9 @@ def train(args: argparse.Namespace) -> SVDTrainingResult:
     loader = MovieLensDataLoader(args.data_dir)
     bundle = loader.load()
     train_df, val_df, test_df = loader.train_val_test_split(bundle.ratings)
-    user_to_idx, item_to_idx, idx_to_user, idx_to_item = build_id_maps(bundle.movies, train_df)
+    warm_test_df, cold_test_df = loader.split_warm_cold_items(train_df, test_df)
+    train_movies = loader.rated_movies(bundle.movies, train_df)
+    user_to_idx, item_to_idx, idx_to_user, idx_to_item = build_id_maps(train_movies, train_df)
 
     train_users, train_items, train_labels = ratings_to_tensors(train_df, user_to_idx, item_to_idx, torch)
     val_users, val_items, val_labels = ratings_to_tensors(val_df, user_to_idx, item_to_idx, torch)
@@ -370,10 +387,36 @@ def train(args: argparse.Namespace) -> SVDTrainingResult:
     train_true, train_pred = predict_frame(model, train_df, user_to_idx, item_to_idx, args.batch_size, device, torch)
     val_true, val_pred = predict_frame(model, val_df, user_to_idx, item_to_idx, args.batch_size, device, torch)
     test_true, test_pred = predict_frame(model, test_df, user_to_idx, item_to_idx, args.batch_size, device, torch)
-    top_k_metrics = evaluate_top_k(
+    warm_top_k_metrics = evaluate_top_k(
+        model,
+        train_df,
+        warm_test_df,
+        user_to_idx,
+        item_to_idx,
+        idx_to_item,
+        args.top_k,
+        args.positive_threshold,
+        args.batch_size,
+        device,
+        torch,
+    )
+    all_top_k_metrics = evaluate_top_k(
         model,
         train_df,
         test_df,
+        user_to_idx,
+        item_to_idx,
+        idx_to_item,
+        args.top_k,
+        args.positive_threshold,
+        args.batch_size,
+        device,
+        torch,
+    )
+    cold_top_k_metrics = evaluate_top_k(
+        model,
+        train_df,
+        cold_test_df,
         user_to_idx,
         item_to_idx,
         idx_to_item,
@@ -389,10 +432,23 @@ def train(args: argparse.Namespace) -> SVDTrainingResult:
         val_rmse=rmse(val_true, val_pred),
         test_rmse=rmse(test_true, test_pred),
         test_mae=float(np.mean(np.abs(np.asarray(test_true, dtype=np.float32) - np.asarray(test_pred, dtype=np.float32)))) if test_true else 0.0,
-        precision_at_k=top_k_metrics[f"precision@{args.top_k}"],
-        recall_at_k=top_k_metrics[f"recall@{args.top_k}"],
-        ndcg_at_k=top_k_metrics[f"ndcg@{args.top_k}"],
-        mrr_at_k=top_k_metrics[f"mrr@{args.top_k}"],
+        precision_at_k=warm_top_k_metrics[f"precision@{args.top_k}"],
+        recall_at_k=warm_top_k_metrics[f"recall@{args.top_k}"],
+        ndcg_at_k=warm_top_k_metrics[f"ndcg@{args.top_k}"],
+        mrr_at_k=warm_top_k_metrics[f"mrr@{args.top_k}"],
+        all_precision_at_k=all_top_k_metrics[f"precision@{args.top_k}"],
+        all_recall_at_k=all_top_k_metrics[f"recall@{args.top_k}"],
+        all_ndcg_at_k=all_top_k_metrics[f"ndcg@{args.top_k}"],
+        all_mrr_at_k=all_top_k_metrics[f"mrr@{args.top_k}"],
+        cold_precision_at_k=cold_top_k_metrics[f"precision@{args.top_k}"],
+        cold_recall_at_k=cold_top_k_metrics[f"recall@{args.top_k}"],
+        cold_ndcg_at_k=cold_top_k_metrics[f"ndcg@{args.top_k}"],
+        cold_mrr_at_k=cold_top_k_metrics[f"mrr@{args.top_k}"],
+        train_item_count=len(item_to_idx),
+        catalog_item_count=int(bundle.movies["movieId"].nunique()),
+        cold_test_interactions=len(cold_test_df),
+        warm_test_interactions=len(warm_test_df),
+        cold_positive_interactions=int((cold_test_df["rating"] >= args.positive_threshold).sum()),
         best_epoch=best_epoch,
     )
 
@@ -427,6 +483,7 @@ def train(args: argparse.Namespace) -> SVDTrainingResult:
             config=vars(args),
             metrics=asdict(result),
             positive_threshold=args.positive_threshold,
+            weights={"collaborative": getattr(args, 'cf_weight', 0.55), "content": getattr(args, 'content_weight', 0.35), "popularity": getattr(args, 'popularity_weight', 0.10)},
         )
         print(f"saved recommender artifact: {recommender_artifact_dir}")
 
@@ -459,6 +516,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--positive-threshold", type=float, default=4.0)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", default="")
+    parser.add_argument("--cf-weight", type=float, default=0.55)
+    parser.add_argument("--content-weight", type=float, default=0.35)
+    parser.add_argument("--popularity-weight", type=float, default=0.10)
     parser.add_argument("--verbose", action="store_true")
     return parser.parse_args()
 

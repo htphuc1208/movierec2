@@ -1,0 +1,150 @@
+{
+  "dataset": "ml-latest-small",
+  "cf_model": "SVD",
+  "content_backend": "tfidf",
+  "weights": {
+    "collaborative": 0.35294117647058826,
+    "content": 0.411764705882353,
+    "popularity": 0.23529411764705888
+  },
+  "validation": {
+    "precision@10": 0.032446808510638296,
+    "recall@10": 0.05285677700296689,
+    "ndcg@10": 0.056708464503430686,
+    "mrr@10": 0.11701494427558257
+  },
+  "validation_segments": {
+    "warm_interactions": 9344,
+    "cold_interactions": 749
+  },
+  "test": {
+    "precision@10": 0.03102836879432624,
+    "recall@10": 0.047073335024590775,
+    "ndcg@10": 0.04485573117914506,
+    "mrr@10": 0.08090875830237532,
+    "rmse": 0.9043042659759521
+  },
+  "test_segments": {
+    "warm_interactions": 9146,
+    "cold_interactions": 947,
+    "warm": {
+      "precision@10": 0.03113879003558719,
+      "recall@10": 0.04799819569361039,
+      "ndcg@10": 0.04525301838434683,
+      "mrr@10": 0.08119668982658305
+    },
+    "cold": {
+      "precision@10": 0.0,
+      "recall@10": 0.0,
+      "ndcg@10": 0.0,
+      "mrr@10": 0.0
+    }
+  },
+  "model_info": {
+    "model_source": "artifact",
+    "model_name": "svd-pytorch",
+    "dataset": "ml-latest-small",
+    "artifact_path": "artifacts/recommender/ml-latest-small/svd",
+    "weights": {
+      "collaborative": 0.35294117647058826,
+      "content": 0.411764705882353,
+      "popularity": 0.23529411764705888
+    },
+    "positive_threshold": 4.0,
+    "collaborative_mode": "funk_svd",
+    "collaborative_engine": "torch",
+    "metrics": {
+      "test": {
+        "train_rmse": 0.687875509262085,
+        "val_rmse": 0.8770878314971924,
+        "test_rmse": 0.8921972513198853,
+        "test_mae": 0.6838202476501465,
+        "precision_at_k": 0.005516014234875445,
+        "recall_at_k": 0.008696114676994963,
+        "ndcg_at_k": 0.007353428080451418,
+        "mrr_at_k": 0.015106196689826582,
+        "all_precision_at_k": 0.00549645390070922,
+        "all_recall_at_k": 0.008374384901718287,
+        "all_ndcg_at_k": 0.007209960814059993,
+        "all_mrr_at_k": 0.015052628616458402,
+        "cold_precision_at_k": 0.0,
+        "cold_recall_at_k": 0.0,
+        "cold_ndcg_at_k": 0.0,
+        "cold_mrr_at_k": 0.0,
+        "train_item_count": 8236,
+        "catalog_item_count": 9742,
+        "cold_test_interactions": 947,
+        "warm_test_interactions": 9146,
+        "cold_positive_interactions": 359,
+        "best_epoch": 2
+      }
+    },
+    "user_count": 610,
+    "movie_count": 9742
+  },
+  "artifact_dir": "artifacts/recommender/ml-latest-small/hybrid-svd-tfidf",
+  "manifest": {
+    "artifact_version": 1,
+    "created_at": "2026-06-03T08:31:53.212692+00:00",
+    "dataset": "ml-latest-small",
+    "model_name": "hybrid-svd-tfidf",
+    "model_source": "artifact",
+    "positive_threshold": 4.0,
+    "weights": {
+      "collaborative": 0.35294117647058826,
+      "content": 0.411764705882353,
+      "popularity": 0.23529411764705888
+    },
+    "collaborative": {
+      "mode": "funk_svd",
+      "engine": "torch",
+      "factors": 24
+    },
+    "content": {
+      "backend": "tfidf"
+    },
+    "files": {
+      "collaborative": "collaborative.npz"
+    },
+    "metrics": {
+      "validation": {
+        "precision@10": 0.032446808510638296,
+        "recall@10": 0.05285677700296689,
+        "ndcg@10": 0.056708464503430686,
+        "mrr@10": 0.11701494427558257
+      },
+      "test": {
+        "precision@10": 0.03102836879432624,
+        "recall@10": 0.047073335024590775,
+        "ndcg@10": 0.04485573117914506,
+        "mrr@10": 0.08090875830237532,
+        "rmse": 0.9043042659759521
+      },
+      "test_segments": {
+        "warm_interactions": 9146,
+        "cold_interactions": 947,
+        "warm": {
+          "precision@10": 0.03113879003558719,
+          "recall@10": 0.04799819569361039,
+          "ndcg@10": 0.04525301838434683,
+          "mrr@10": 0.08119668982658305
+        },
+        "cold": {
+          "precision@10": 0.0,
+          "recall@10": 0.0,
+          "ndcg@10": 0.0,
+          "mrr@10": 0.0
+        }
+      }
+    },
+    "tuning": {
+      "primary_metric": "ndcg@10",
+      "tie_breakers": [
+        "mrr@10",
+        "recall@10",
+        "precision@10"
+      ],
+      "candidate_count": 123
+    }
+  }
+}

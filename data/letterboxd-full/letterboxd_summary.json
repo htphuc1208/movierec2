@@ -1,0 +1,13 @@
+{
+  "generated_at": "2026-06-03T04:13:06.720478+00:00",
+  "source": "full",
+  "raw_dir": "crawl/data/raw",
+  "output_dir": "data/letterboxd-full",
+  "raw_movies": 10000,
+  "movies": 6720,
+  "raw_ratings": 34009,
+  "ratings": 33946,
+  "users": 551,
+  "duplicates_collapsed": 3280,
+  "tmdb_enrichment": "skipped_no_tmdb_key"
+}

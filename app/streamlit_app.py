@@ -5,6 +5,7 @@ import sys
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote_plus
 
 import pandas as pd
 import requests

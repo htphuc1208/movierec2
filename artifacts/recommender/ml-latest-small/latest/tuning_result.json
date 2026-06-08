@@ -1,0 +1,134 @@
+{
+  "dataset": "ml-latest-small",
+  "cf_model": "BPR",
+  "content_backend": "tfidf",
+  "weights": {
+    "collaborative": 0.8125,
+    "content": 0.18749999999999997,
+    "popularity": 0.0
+  },
+  "validation": {
+    "precision@10": 0.04574468085106383,
+    "recall@10": 0.079356346010985,
+    "ndcg@10": 0.07685290028965766,
+    "mrr@10": 0.14366416188224698
+  },
+  "validation_segments": {
+    "warm_interactions": 9344,
+    "cold_interactions": 749
+  },
+  "test": {
+    "precision@10": 0.0375886524822695,
+    "recall@10": 0.060331839007955704,
+    "ndcg@10": 0.05441215166541153,
+    "mrr@10": 0.09638917032534053,
+    "rmse": 1.6976710557937622
+  },
+  "test_segments": {
+    "warm_interactions": 9146,
+    "cold_interactions": 947,
+    "warm": {
+      "precision@10": 0.037544483985765126,
+      "recall@10": 0.061241944335497074,
+      "ndcg@10": 0.05471038375188991,
+      "mrr@10": 0.09647799807942156
+    },
+    "cold": {
+      "precision@10": 0.001075268817204301,
+      "recall@10": 0.000346860908775581,
+      "ndcg@10": 0.0007888593774124736,
+      "mrr@10": 0.0015360983102918587
+    }
+  },
+  "model_info": {
+    "model_source": "artifact",
+    "model_name": "recbole-BPR",
+    "dataset": "ml-latest-small",
+    "artifact_path": "artifacts/recommender/ml-latest-small/recbole-bpr",
+    "weights": {
+      "collaborative": 0.8125,
+      "content": 0.18749999999999997,
+      "popularity": 0.0
+    },
+    "positive_threshold": 4.0,
+    "collaborative_mode": "embedding",
+    "collaborative_engine": "recbole",
+    "metrics": {
+      "precision@10": 0.0276,
+      "precision@20": 0.0226,
+      "recall@10": 0.0565,
+      "recall@20": 0.0896,
+      "ndcg@10": 0.0476,
+      "ndcg@20": 0.0574,
+      "mrr@10": 0.0878,
+      "mrr@20": 0.0933
+    },
+    "user_count": 609,
+    "movie_count": 9742
+  },
+  "artifact_dir": "artifacts/recommender/ml-latest-small/hybrid-bpr-tfidf",
+  "manifest": {
+    "artifact_version": 1,
+    "created_at": "2026-06-03T08:33:28.953946+00:00",
+    "dataset": "ml-latest-small",
+    "model_name": "hybrid-bpr-tfidf",
+    "model_source": "artifact",
+    "positive_threshold": 4.0,
+    "weights": {
+      "collaborative": 0.8125,
+      "content": 0.18749999999999997,
+      "popularity": 0.0
+    },
+    "collaborative": {
+      "mode": "embedding",
+      "engine": "recbole",
+      "factors": 64
+    },
+    "content": {
+      "backend": "tfidf"
+    },
+    "files": {
+      "collaborative": "collaborative.npz"
+    },
+    "metrics": {
+      "validation": {
+        "precision@10": 0.04574468085106383,
+        "recall@10": 0.079356346010985,
+        "ndcg@10": 0.07685290028965766,
+        "mrr@10": 0.14366416188224698
+      },
+      "test": {
+        "precision@10": 0.0375886524822695,
+        "recall@10": 0.060331839007955704,
+        "ndcg@10": 0.05441215166541153,
+        "mrr@10": 0.09638917032534053,
+        "rmse": 1.6976710557937622
+      },
+      "test_segments": {
+        "warm_interactions": 9146,
+        "cold_interactions": 947,
+        "warm": {
+          "precision@10": 0.037544483985765126,
+          "recall@10": 0.061241944335497074,
+          "ndcg@10": 0.05471038375188991,
+          "mrr@10": 0.09647799807942156
+        },
+        "cold": {
+          "precision@10": 0.001075268817204301,
+          "recall@10": 0.000346860908775581,
+          "ndcg@10": 0.0007888593774124736,
+          "mrr@10": 0.0015360983102918587
+        }
+      }
+    },
+    "tuning": {
+      "primary_metric": "ndcg@10",
+      "tie_breakers": [
+        "mrr@10",
+        "recall@10",
+        "precision@10"
+      ],
+      "candidate_count": 123
+    }
+  }
+}

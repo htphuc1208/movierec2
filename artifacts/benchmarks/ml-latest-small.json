@@ -1,0 +1,112 @@
+[
+  {
+    "model": "Pop",
+    "best_valid_score": 0.036,
+    "best_valid_result": {
+      "precision@10": 0.0251,
+      "precision@20": 0.0226,
+      "recall@10": 0.0405,
+      "recall@20": 0.0799,
+      "ndcg@10": 0.036,
+      "ndcg@20": 0.0485,
+      "mrr@10": 0.0635,
+      "mrr@20": 0.0707
+    },
+    "test_result": {
+      "precision@10": 0.0202,
+      "precision@20": 0.0183,
+      "recall@10": 0.0376,
+      "recall@20": 0.0711,
+      "ndcg@10": 0.031,
+      "ndcg@20": 0.0415,
+      "mrr@10": 0.0591,
+      "mrr@20": 0.065
+    },
+    "dataset": "ml-latest-small",
+    "protocol": "per_user_temporal_80_10_10_pos4_full",
+    "command": "scripts/benchmark_recbole.py --data-dir data/ml-latest-small --dataset-name ml-latest-small --models Pop,ItemKNN,BPR,LightGCN --top-k 10 20"
+  },
+  {
+    "model": "ItemKNN",
+    "best_valid_score": 0.064,
+    "best_valid_result": {
+      "precision@10": 0.0412,
+      "precision@20": 0.0338,
+      "recall@10": 0.0807,
+      "recall@20": 0.1311,
+      "ndcg@10": 0.064,
+      "ndcg@20": 0.08,
+      "mrr@10": 0.1043,
+      "mrr@20": 0.1131
+    },
+    "test_result": {
+      "precision@10": 0.0329,
+      "precision@20": 0.0302,
+      "recall@10": 0.0597,
+      "recall@20": 0.1148,
+      "ndcg@10": 0.0524,
+      "ndcg@20": 0.0691,
+      "mrr@10": 0.0978,
+      "mrr@20": 0.1049
+    },
+    "dataset": "ml-latest-small",
+    "protocol": "per_user_temporal_80_10_10_pos4_full",
+    "command": "scripts/benchmark_recbole.py --data-dir data/ml-latest-small --dataset-name ml-latest-small --models Pop,ItemKNN,BPR,LightGCN --top-k 10 20"
+  },
+  {
+    "model": "BPR",
+    "best_valid_score": 0.0539,
+    "best_valid_result": {
+      "precision@10": 0.0343,
+      "precision@20": 0.0285,
+      "recall@10": 0.0658,
+      "recall@20": 0.1042,
+      "ndcg@10": 0.0539,
+      "ndcg@20": 0.066,
+      "mrr@10": 0.0886,
+      "mrr@20": 0.0954
+    },
+    "test_result": {
+      "precision@10": 0.0276,
+      "precision@20": 0.0226,
+      "recall@10": 0.0565,
+      "recall@20": 0.0896,
+      "ndcg@10": 0.0476,
+      "ndcg@20": 0.0574,
+      "mrr@10": 0.0878,
+      "mrr@20": 0.0933
+    },
+    "dataset": "ml-latest-small",
+    "protocol": "per_user_temporal_80_10_10_pos4_full",
+    "command": "scripts/benchmark_recbole.py --data-dir data/ml-latest-small --dataset-name ml-latest-small --models Pop,ItemKNN,BPR,LightGCN --top-k 10 20",
+    "artifact_dir": "artifacts/recommender/ml-latest-small/recbole-bpr"
+  },
+  {
+    "model": "LightGCN",
+    "best_valid_score": 0.0502,
+    "best_valid_result": {
+      "precision@10": 0.0308,
+      "precision@20": 0.0241,
+      "recall@10": 0.0575,
+      "recall@20": 0.0865,
+      "ndcg@10": 0.0502,
+      "ndcg@20": 0.0584,
+      "mrr@10": 0.0886,
+      "mrr@20": 0.0935
+    },
+    "test_result": {
+      "precision@10": 0.0228,
+      "precision@20": 0.02,
+      "recall@10": 0.0435,
+      "recall@20": 0.075,
+      "ndcg@10": 0.0408,
+      "ndcg@20": 0.0507,
+      "mrr@10": 0.0786,
+      "mrr@20": 0.0844
+    },
+    "dataset": "ml-latest-small",
+    "protocol": "per_user_temporal_80_10_10_pos4_full",
+    "command": "scripts/benchmark_recbole.py --data-dir data/ml-latest-small --dataset-name ml-latest-small --models Pop,ItemKNN,BPR,LightGCN --top-k 10 20",
+    "artifact_dir": "artifacts/recommender/ml-latest-small/recbole-lightgcn"
+  }
+]

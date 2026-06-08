@@ -1,0 +1,77 @@
+{
+  "artifact_version": 1,
+  "created_at": "2026-06-03T04:31:54.500934+00:00",
+  "dataset": "letterboxd-full",
+  "model_name": "svd-pytorch",
+  "model_source": "pytorch_svd",
+  "positive_threshold": 4.0,
+  "weights": {
+    "collaborative": 0.55,
+    "content": 0.35,
+    "popularity": 0.1
+  },
+  "collaborative": {
+    "mode": "funk_svd",
+    "engine": "torch",
+    "factors": 24
+  },
+  "content": {
+    "backend": "tfidf"
+  },
+  "files": {
+    "collaborative": "collaborative.npz"
+  },
+  "metrics": {
+    "test": {
+      "train_rmse": 0.7066892981529236,
+      "val_rmse": 0.7705642580986023,
+      "test_rmse": 0.7890205979347229,
+      "test_mae": 0.6130781173706055,
+      "precision_at_k": 0.01019900497512438,
+      "recall_at_k": 0.04372186685619522,
+      "ndcg_at_k": 0.028723519064368985,
+      "mrr_at_k": 0.03619304272289347,
+      "all_precision_at_k": 0.009425287356321841,
+      "all_recall_at_k": 0.03369557645419714,
+      "all_ndcg_at_k": 0.02413361425407942,
+      "all_mrr_at_k": 0.03344736361977741,
+      "cold_precision_at_k": 0.0,
+      "cold_recall_at_k": 0.0,
+      "cold_ndcg_at_k": 0.0,
+      "cold_mrr_at_k": 0.0,
+      "train_item_count": 5773,
+      "catalog_item_count": 6720,
+      "cold_test_interactions": 745,
+      "warm_test_interactions": 2657,
+      "cold_positive_interactions": 333,
+      "best_epoch": 2
+    }
+  },
+  "config": {
+    "data_dir": "data/letterboxd-full",
+    "artifact_path": "artifacts/checkpoints/letterboxd-full/svd.pt",
+    "recommender_artifact_dir": "artifacts/recommender/letterboxd-full/svd",
+    "dataset_name": "letterboxd-full",
+    "factors": 24,
+    "epochs": 80,
+    "batch_size": 2048,
+    "lr": 0.01,
+    "optimizer": "adamw",
+    "momentum": 0.0,
+    "weight_decay": 0.0,
+    "embedding_reg": 0.02,
+    "bias_reg": 0.005,
+    "bias_shrinkage": 5.0,
+    "init_std": 0.05,
+    "max_grad_norm": 5.0,
+    "lr_decay_factor": 0.5,
+    "lr_patience": 2,
+    "min_lr": 1e-05,
+    "patience": 8,
+    "top_k": 10,
+    "positive_threshold": 4.0,
+    "seed": 42,
+    "device": "",
+    "verbose": false
+  }
+}

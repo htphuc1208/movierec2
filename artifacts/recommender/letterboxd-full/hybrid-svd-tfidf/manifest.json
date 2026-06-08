@@ -1,0 +1,64 @@
+{
+  "artifact_version": 1,
+  "created_at": "2026-06-03T06:05:12.678802+00:00",
+  "dataset": "letterboxd-full",
+  "model_name": "hybrid-svd-tfidf",
+  "model_source": "artifact",
+  "positive_threshold": 4.0,
+  "weights": {
+    "collaborative": 0.39999999999999997,
+    "content": 0.3333333333333333,
+    "popularity": 0.26666666666666666
+  },
+  "collaborative": {
+    "mode": "funk_svd",
+    "engine": "torch",
+    "factors": 24
+  },
+  "content": {
+    "backend": "tfidf"
+  },
+  "files": {
+    "collaborative": "collaborative.npz"
+  },
+  "metrics": {
+    "validation": {
+      "precision@10": 0.013670886075949368,
+      "recall@10": 0.06467779056386651,
+      "ndcg@10": 0.04104700863867341,
+      "mrr@10": 0.04424352019288728
+    },
+    "test": {
+      "precision@10": 0.00735632183908046,
+      "recall@10": 0.03902124695228143,
+      "ndcg@10": 0.02191123137688706,
+      "mrr@10": 0.019797482211275315,
+      "rmse": 0.7832956314086914
+    },
+    "test_segments": {
+      "warm_interactions": 2657,
+      "cold_interactions": 745,
+      "warm": {
+        "precision@10": 0.007960199004975126,
+        "recall@10": 0.04713930348258706,
+        "ndcg@10": 0.02519318913971452,
+        "mrr@10": 0.021422648661454633
+      },
+      "cold": {
+        "precision@10": 0.0,
+        "recall@10": 0.0,
+        "ndcg@10": 0.0,
+        "mrr@10": 0.0
+      }
+    }
+  },
+  "tuning": {
+    "primary_metric": "ndcg@10",
+    "tie_breakers": [
+      "mrr@10",
+      "recall@10",
+      "precision@10"
+    ],
+    "candidate_count": 123
+  }
+}

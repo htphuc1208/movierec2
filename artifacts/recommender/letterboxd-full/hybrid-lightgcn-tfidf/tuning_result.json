@@ -1,0 +1,148 @@
+{
+  "dataset": "letterboxd-full",
+  "cf_model": "LightGCN",
+  "content_backend": "tfidf",
+  "weights": {
+    "collaborative": 0.5,
+    "content": 0.3666666666666667,
+    "popularity": 0.13333333333333333
+  },
+  "validation": {
+    "precision@10": 0.022025316455696206,
+    "recall@10": 0.08710696476519261,
+    "ndcg@10": 0.06385611525902277,
+    "mrr@10": 0.08159132007233273
+  },
+  "validation_segments": {
+    "warm_interactions": 2968,
+    "cold_interactions": 434
+  },
+  "test": {
+    "precision@10": 0.00781609195402299,
+    "recall@10": 0.03348841452289728,
+    "ndcg@10": 0.02391205695754929,
+    "mrr@10": 0.032112753147235905,
+    "rmse": 1.5272088050842285
+  },
+  "test_segments": {
+    "warm_interactions": 2657,
+    "cold_interactions": 745,
+    "warm": {
+      "precision@10": 0.007960199004975126,
+      "recall@10": 0.03466003316749586,
+      "ndcg@10": 0.025760054339135866,
+      "mrr@10": 0.03422372265655848
+    },
+    "cold": {
+      "precision@10": 0.00101010101010101,
+      "recall@10": 0.010101010101010102,
+      "ndcg@10": 0.002980276878696309,
+      "mrr@10": 0.0010662177328843996
+    }
+  },
+  "model_info": {
+    "model_source": "artifact",
+    "model_name": "lightgcn-pytorch",
+    "dataset": "letterboxd-full",
+    "artifact_path": "artifacts/recommender/letterboxd-full/lightgcn",
+    "weights": {
+      "collaborative": 0.5,
+      "content": 0.3666666666666667,
+      "popularity": 0.13333333333333333
+    },
+    "positive_threshold": 4.0,
+    "collaborative_mode": "embedding",
+    "collaborative_engine": "torch-native",
+    "metrics": {
+      "test": {
+        "train_loss": 0.1543798347314199,
+        "val_loss": 0.22516034543514252,
+        "precision_at_k": 0.011194029850746268,
+        "recall_at_k": 0.03453861644160151,
+        "ndcg_at_k": 0.02703983936475227,
+        "mrr_at_k": 0.04013168285556345,
+        "all_precision_at_k": 0.010344827586206896,
+        "all_recall_at_k": 0.028767560664112388,
+        "all_ndcg_at_k": 0.02319415813944322,
+        "all_mrr_at_k": 0.03708721036307243,
+        "cold_precision_at_k": 0.0,
+        "cold_recall_at_k": 0.0,
+        "cold_ndcg_at_k": 0.0,
+        "cold_mrr_at_k": 0.0,
+        "train_item_count": 5773,
+        "catalog_item_count": 6720,
+        "cold_test_interactions": 745,
+        "warm_test_interactions": 2657,
+        "cold_positive_interactions": 333,
+        "best_epoch": 43
+      }
+    },
+    "user_count": 551,
+    "movie_count": 6720
+  },
+  "artifact_dir": "artifacts/recommender/letterboxd-full/hybrid-lightgcn-tfidf",
+  "manifest": {
+    "artifact_version": 1,
+    "created_at": "2026-06-03T06:05:20.085881+00:00",
+    "dataset": "letterboxd-full",
+    "model_name": "hybrid-lightgcn-tfidf",
+    "model_source": "artifact",
+    "positive_threshold": 4.0,
+    "weights": {
+      "collaborative": 0.5,
+      "content": 0.3666666666666667,
+      "popularity": 0.13333333333333333
+    },
+    "collaborative": {
+      "mode": "embedding",
+      "engine": "torch-native",
+      "factors": 64
+    },
+    "content": {
+      "backend": "tfidf"
+    },
+    "files": {
+      "collaborative": "collaborative.npz"
+    },
+    "metrics": {
+      "validation": {
+        "precision@10": 0.022025316455696206,
+        "recall@10": 0.08710696476519261,
+        "ndcg@10": 0.06385611525902277,
+        "mrr@10": 0.08159132007233273
+      },
+      "test": {
+        "precision@10": 0.00781609195402299,
+        "recall@10": 0.03348841452289728,
+        "ndcg@10": 0.02391205695754929,
+        "mrr@10": 0.032112753147235905,
+        "rmse": 1.5272088050842285
+      },
+      "test_segments": {
+        "warm_interactions": 2657,
+        "cold_interactions": 745,
+        "warm": {
+          "precision@10": 0.007960199004975126,
+          "recall@10": 0.03466003316749586,
+          "ndcg@10": 0.025760054339135866,
+          "mrr@10": 0.03422372265655848
+        },
+        "cold": {
+          "precision@10": 0.00101010101010101,
+          "recall@10": 0.010101010101010102,
+          "ndcg@10": 0.002980276878696309,
+          "mrr@10": 0.0010662177328843996
+        }
+      }
+    },
+    "tuning": {
+      "primary_metric": "ndcg@10",
+      "tie_breakers": [
+        "mrr@10",
+        "recall@10",
+        "precision@10"
+      ],
+      "candidate_count": 123
+    }
+  }
+}

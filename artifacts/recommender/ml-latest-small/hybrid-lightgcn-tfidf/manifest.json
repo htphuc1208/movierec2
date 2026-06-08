@@ -1,0 +1,64 @@
+{
+  "artifact_version": 1,
+  "created_at": "2026-06-03T08:32:23.834199+00:00",
+  "dataset": "ml-latest-small",
+  "model_name": "hybrid-lightgcn-tfidf",
+  "model_source": "artifact",
+  "positive_threshold": 4.0,
+  "weights": {
+    "collaborative": 0.6470588235294118,
+    "content": 0.1764705882352941,
+    "popularity": 0.1764705882352941
+  },
+  "collaborative": {
+    "mode": "embedding",
+    "engine": "torch-native",
+    "factors": 64
+  },
+  "content": {
+    "backend": "tfidf"
+  },
+  "files": {
+    "collaborative": "collaborative.npz"
+  },
+  "metrics": {
+    "validation": {
+      "precision@10": 0.03953900709219858,
+      "recall@10": 0.07116384115662934,
+      "ndcg@10": 0.06829367704145073,
+      "mrr@10": 0.12959163570865698
+    },
+    "test": {
+      "precision@10": 0.03439716312056738,
+      "recall@10": 0.058782449709003384,
+      "ndcg@10": 0.051144066655759414,
+      "mrr@10": 0.09245328154902623,
+      "rmse": 1.4535467624664307
+    },
+    "test_segments": {
+      "warm_interactions": 9146,
+      "cold_interactions": 947,
+      "warm": {
+        "precision@10": 0.03451957295373666,
+        "recall@10": 0.05966716820995296,
+        "ndcg@10": 0.05155265123368959,
+        "mrr@10": 0.0927822967858555
+      },
+      "cold": {
+        "precision@10": 0.0,
+        "recall@10": 0.0,
+        "ndcg@10": 0.0,
+        "mrr@10": 0.0
+      }
+    }
+  },
+  "tuning": {
+    "primary_metric": "ndcg@10",
+    "tie_breakers": [
+      "mrr@10",
+      "recall@10",
+      "precision@10"
+    ],
+    "candidate_count": 123
+  }
+}
