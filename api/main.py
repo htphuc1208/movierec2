@@ -10,8 +10,10 @@ from pydantic import BaseModel, Field
 
 from recommender.config import get_settings
 from recommender.inference.artifacts import artifact_status
+from recommender.inference.artifacts import load_artifact_bundle
 from recommender.inference.ratings_store import SidecarRatingStore
 from recommender.inference.recommender import HybridArtifactRecommender
+from recommender.rag.chatbot import MovieRAGChatbot
 
 
 app = FastAPI(title="Hybrid Movie Recommendation API", version="0.2.0")
@@ -68,6 +70,17 @@ class RatingRequest(BaseModel):
     rating: float = Field(ge=0.5, le=5.0)
 
 
+class ChatRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=1000)
+    top_k: int = Field(default=6, ge=1, le=20)
+
+
+class ChatResponse(BaseModel):
+    answer: str
+    sources: list[dict[str, Any]] = Field(default_factory=list)
+    retrieval_mode: str | None = None
+
+
 @lru_cache(maxsize=1)
 def get_recommender() -> HybridArtifactRecommender:
     settings = get_settings()
@@ -78,6 +91,13 @@ def get_recommender() -> HybridArtifactRecommender:
 def get_rating_store() -> SidecarRatingStore:
     settings = get_settings()
     return SidecarRatingStore(settings.ratings_store_path)
+
+
+@lru_cache(maxsize=1)
+def get_chatbot() -> MovieRAGChatbot:
+    settings = get_settings()
+    bundle = load_artifact_bundle(settings.artifacts_dir)
+    return MovieRAGChatbot(bundle, api_key=settings.openai_api_key, model=settings.chat_model)
 
 
 def _service_unavailable(exc: FileNotFoundError) -> HTTPException:
@@ -93,6 +113,8 @@ def health() -> dict[str, Any]:
         "artifacts": status,
         "ratings_store_path": str(settings.ratings_store_path),
         "tmdb_api_key_present": bool(settings.tmdb_api_key),
+        "openai_api_key_present": bool(settings.openai_api_key),
+        "chat_model": settings.chat_model,
     }
 
 
@@ -220,3 +242,13 @@ def recommendations(request: RecommendationRequest) -> RecommendationResponse:
 def recommend_alias(request: RecommendationRequest) -> RecommendationResponse:
     return recommendations(request)
 
+
+@app.post("/chat", response_model=ChatResponse)
+def chat(request: ChatRequest) -> ChatResponse:
+    try:
+        result = get_chatbot().answer(message=request.message, top_k=request.top_k)
+    except FileNotFoundError as exc:
+        raise _service_unavailable(exc) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Không tạo được câu trả lời chatbot: {exc}") from exc
+    return ChatResponse(**result)

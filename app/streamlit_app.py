@@ -256,12 +256,51 @@ def render_metrics_page() -> None:
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
 
+def render_chatbot_page() -> None:
+    st.title("Chatbot tư vấn phim")
+    st.caption("Chatbot truy xuất phim từ artifact hiện tại; nếu chưa cấu hình OpenAI key, API sẽ trả lời bằng chế độ local.")
+
+    st.session_state.setdefault("chat_messages", [])
+    for message in st.session_state.chat_messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    user_message = st.chat_input("Bạn muốn xem phim kiểu gì?")
+    if not user_message:
+        return
+
+    st.session_state.chat_messages.append({"role": "user", "content": user_message})
+    with st.chat_message("user"):
+        st.markdown(user_message)
+
+    with st.chat_message("assistant"):
+        with st.spinner("Đang tìm phim phù hợp..."):
+            data = api_post("/chat", {"message": user_message, "top_k": 6})
+        if not data:
+            st.error("Không gọi được chatbot API.")
+            return
+        answer = str(data.get("answer") or "")
+        st.markdown(answer)
+        st.session_state.chat_messages.append({"role": "assistant", "content": answer})
+        sources = data.get("sources") or []
+        if sources:
+            st.caption(f"Nguồn gợi ý ({data.get('retrieval_mode') or 'retrieval'}):")
+            columns = st.columns(min(3, len(sources)))
+            for idx, movie in enumerate(sources[:6]):
+                with columns[idx % len(columns)]:
+                    poster_url = movie.get("poster_url")
+                    if poster_url:
+                        st.image(poster_url, use_container_width=True)
+                    st.markdown(f"**{clean_title(movie.get('title', ''))}**")
+                    st.caption(f"Điểm liên quan: {float(movie.get('score') or 0.0):.3f}")
+
+
 def main() -> None:
     st.set_page_config(page_title="movierec", layout="wide")
     init_state()
     users = load_users()
     render_navbar(users)
-    page_tabs = st.tabs(["Trang chính", "Đánh giá", "Trạng thái"])
+    page_tabs = st.tabs(["Trang chính", "Chatbot", "Đánh giá", "Trạng thái"])
     with page_tabs[0]:
         if st.session_state.page == "search":
             render_search_page()
@@ -272,8 +311,10 @@ def main() -> None:
         else:
             render_home_page()
     with page_tabs[1]:
-        render_metrics_page()
+        render_chatbot_page()
     with page_tabs[2]:
+        render_metrics_page()
+    with page_tabs[3]:
         st.json(api_get("/health") or {})
 
 

@@ -15,7 +15,7 @@ pytestmark = pytest.mark.skipif(importlib.util.find_spec("fastapi") is None, rea
 def test_api_health_and_recommendations(tmp_path, monkeypatch) -> None:
     from fastapi.testclient import TestClient
 
-    from api.main import app, get_recommender
+    from api.main import app, get_chatbot, get_recommender
 
     save_artifact_bundle(
         tmp_path,
@@ -38,10 +38,12 @@ def test_api_health_and_recommendations(tmp_path, monkeypatch) -> None:
     )
     monkeypatch.setenv("ARTIFACTS_DIR", str(tmp_path))
     monkeypatch.setenv("RATINGS_STORE_PATH", str(tmp_path / "runtime" / "ratings.csv"))
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     get_recommender.cache_clear()
     from api.main import get_rating_store
 
     get_rating_store.cache_clear()
+    get_chatbot.cache_clear()
 
     client = TestClient(app)
     assert client.get("/health").json()["artifacts"]["ready"]
@@ -67,3 +69,6 @@ def test_api_health_and_recommendations(tmp_path, monkeypatch) -> None:
     assert client.get("/rate/1/2").json()["rating"] == 4.5
     history = client.get("/users/1/history").json()["movies"]
     assert {movie["movie_id"] for movie in history} == {1, 2}
+    chat = client.post("/chat", json={"message": "phim drama", "top_k": 1})
+    assert chat.status_code == 200
+    assert chat.json()["sources"]

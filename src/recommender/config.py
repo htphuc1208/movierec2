@@ -30,6 +30,8 @@ class AppSettings:
     tmdb_language: str = "vi-VN"
     tmdb_base_url: str = "https://api.themoviedb.org/3"
     api_url: str = "http://localhost:8000"
+    openai_api_key: str | None = None
+    chat_model: str = "gpt-4.1-mini"
 
 
 def get_settings() -> AppSettings:
@@ -44,4 +46,6 @@ def get_settings() -> AppSettings:
         tmdb_language=os.getenv("TMDB_LANGUAGE", "vi-VN"),
         tmdb_base_url=os.getenv("TMDB_BASE_URL", "https://api.themoviedb.org/3"),
         api_url=os.getenv("API_URL", "http://localhost:8000"),
+        openai_api_key=os.getenv("OPENAI_API_KEY"),
+        chat_model=os.getenv("CHAT_MODEL", "gpt-4.1-mini"),
     )

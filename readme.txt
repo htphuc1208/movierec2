@@ -401,3 +401,52 @@ Strong artifact thêm:
 - two_tower_user_embeddings.npy và two_tower_item_embeddings.npy nếu learned Two-Tower train thành công.
 
 API sẽ tự dùng ranker nếu hybrid_config.json có model_type strong_ranker và ranker.joblib load được. Nếu thiếu lightgbm/joblib hoặc file ranker, API fallback về hybrid scores từ LightGCN, Two-Tower, content và popularity.
+
+
+14. Chatbot, EDA và embedding visualization
+-------------------------------------------
+Các tính năng này được port từ các branch remote embedding_visualization, chatbot và EDA, nhưng đã chỉnh lại để dùng artifact/schema hiện tại.
+
+Chatbot RAG:
+- API endpoint: POST /chat
+- Streamlit chính có tab Chatbot.
+- Nếu OPENAI_API_KEY có trong .env, chatbot gọi OpenAI model trong CHAT_MODEL.
+- Nếu chưa có OPENAI_API_KEY, chatbot vẫn trả lời local bằng các phim retrieved từ catalog.
+- Retriever dùng SBERT nếu artifact được train bằng content_backend=sbert; nếu không, fallback sang lexical TF-IDF trên metadata phim.
+
+Cấu hình .env:
+
+    OPENAI_API_KEY=
+    CHAT_MODEL=gpt-4.1-mini
+
+Ví dụ gọi API:
+
+    curl -X POST http://localhost:8000/chat \
+      -H "Content-Type: application/json" \
+      -d '{"message": "Tôi muốn xem phim khoa học viễn tưởng về không gian", "top_k": 6}'
+
+EDA dashboard:
+
+    PYTHONPATH=src:. streamlit run app/eda_app.py
+
+Dashboard này đọc:
+- MovieLens ratings: data/raw/ml-latest-small/ratings.csv
+- MovieLens catalog: data/processed/movie_catalog_enriched.parquet
+- Letterboxd ratings: data/processed/letterboxd/ratings.csv
+- Letterboxd catalog: data/processed/letterboxd/movie_catalog_enriched.parquet
+
+Nội dung EDA gồm thống kê tổng quan, phân phối rating, metadata TMDb, top thể loại/top phim và user segmentation bằng KMeans/GMM.
+
+Embedding visualization:
+
+    PYTHONPATH=src:. python scripts/visualize_embeddings.py \
+      --artifacts-dir artifacts/letterboxd_pdf_clean \
+      --output-dir reports/embedding_visualization_letterboxd \
+      --method tsne \
+      --sample-size 2500 \
+      --top-genres 8
+
+Output:
+
+    reports/embedding_visualization_letterboxd/embedding_visualization.html
+    reports/embedding_visualization_letterboxd/embedding_visualization_points.csv
