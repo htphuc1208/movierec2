@@ -67,7 +67,13 @@ class MovieLensDataLoader:
         if enriched_path.exists():
             enriched = pd.read_csv(enriched_path)
             enriched["movieId"] = enriched["movieId"].astype(int)
-            movies = movies.merge(enriched, on="movieId", how="left", suffixes=("", "_enriched"))
+            cols_to_use = ["movieId", "overview", "director", "cast", "poster_url", "country"]
+            available_cols = [col for col in cols_to_use if col in enriched.columns]
+            
+            if len(available_cols) > 1: 
+                enriched = enriched[available_cols]
+                movies = movies.merge(enriched, on="movieId", how="left", suffixes=("", "_enriched"))
+
             for column in ["overview", "tagline", "director", "cast", "poster_url", "budget", "revenue"]:
                 enriched_column = f"{column}_enriched"
                 if enriched_column in movies.columns:
