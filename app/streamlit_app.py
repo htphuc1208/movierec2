@@ -11,23 +11,35 @@ import pandas as pd
 import requests
 import streamlit as st
 
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
+http_session = requests.Session()
+
+retries = Retry(total=3, backoff_factor=0.1)
+http_session.mount('http://', HTTPAdapter(max_retries=retries))
 
 API_URL = os.getenv("API_URL", "http://localhost:8000").rstrip("/")
 
 
 def api_get(path: str, **params: Any) -> Any | None:
     try:
-        response = requests.get(f"{API_URL}{path}", params=params, timeout=20)
+        response = http_session.get(f"{API_URL}{path}", params=params, timeout=20)
         response.raise_for_status()
         return response.json()
     except requests.RequestException as exc:
         st.toast(f"Không gọi được API: {exc}")
         return None
+    
+@st.cache_data(ttl=600, show_spinner=False)
+def api_get_cached(path: str, **params: Any) -> Any | None:
+    return api_get(path, **params)
 
 
 def api_post(path: str, payload: dict[str, Any]) -> Any | None:
     try:
-        response = requests.post(f"{API_URL}{path}", json=payload, timeout=60)
+        response = http_session.post(f"{API_URL}{path}", json=payload, timeout=60)
         response.raise_for_status()
         return response.json()
     except requests.RequestException as exc:
@@ -80,22 +92,39 @@ def init_state() -> None:
     st.session_state.setdefault("search_query", "")
 
 
+def submit_search():
+    query = st.session_state.search_input_widget
+    if query.strip():
+        st.session_state.search_query = query
+        navigate("search")
+        st.session_state.search_input_widget = ""
+
+
 def render_navbar(users: list[int]) -> None:
+    if "search_input_widget" not in st.session_state:
+        st.session_state.search_input_widget = ""
+
     col_brand, col_search, col_user, col_history = st.columns([1.1, 3.5, 1.4, 1.1])
+    
     with col_brand:
         if st.button("movierec", use_container_width=True):
             navigate("home")
+            
     with col_search:
-        query = st.text_input("Tìm phim", value=st.session_state.search_query, label_visibility="collapsed", placeholder="Tìm phim")
-        if query != st.session_state.search_query:
-            st.session_state.search_query = query
-            if query.strip():
-                navigate("search")
+        st.text_input(
+            "Tìm phim", 
+            key="search_input_widget", 
+            on_change=submit_search, 
+            label_visibility="collapsed", 
+            placeholder="Tìm phim"
+        )
+        
     with col_user:
         options = ["Guest"] + [str(user) for user in users[:1000]]
         current = "Guest" if st.session_state.current_user is None else str(st.session_state.current_user)
         selected = st.selectbox("User", options, index=options.index(current) if current in options else 0, label_visibility="collapsed")
         st.session_state.current_user = None if selected == "Guest" else int(selected)
+        
     with col_history:
         st.button("Lịch sử", use_container_width=True, disabled=st.session_state.current_user is None, on_click=navigate, args=("history",))
 
@@ -167,7 +196,7 @@ def render_global_styles() -> None:
 
 def render_hero_banner() -> None:
     # 1. Gọi API lấy 5 phim Trending
-    data = api_get("/movies/trending", top_k=5)
+    data = api_get_cached("/movies/trending", top_k=5)
     movies = movie_list(data)
     if not movies:
         return
@@ -358,7 +387,7 @@ def render_home_page() -> None:
         ("Hành động", "/movies/genre/Action"),
         ("Hài hước", "/movies/genre/Comedy"),
     ]:
-        render_movie_row(title, movie_list(api_get(path, top_k=15)), path)
+        render_movie_row(title, movie_list(api_get_cached(path, top_k=15)), path)
 
 
 def render_search_page() -> None:
