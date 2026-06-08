@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import html
 import os
+import re
 from typing import Any
 
 import pandas as pd
@@ -47,7 +49,22 @@ def load_users() -> list[int]:
 
 
 def clean_title(title: str) -> str:
-    return str(title or "Không rõ tên").strip()
+    raw_title = str(title or "Không rõ tên").strip()
+    cleaned = re.sub(r"^(.*?),\s*(The|A|An)\s*(\(\d{4}\))$", r"\2 \1 \3", raw_title, flags=re.IGNORECASE)
+    cleaned = re.sub(r"^(.*?),\s*(The|A|An)$", r"\2 \1", cleaned, flags=re.IGNORECASE)
+    return cleaned
+
+
+def safe_text(value: Any) -> str:
+    return html.escape(str(value or ""))
+
+
+def parse_movie_id(movie: dict[str, Any]) -> int:
+    raw_id = movie.get("movie_id") or movie.get("movieId") or movie.get("id") or 0
+    try:
+        return int(float(raw_id))
+    except (TypeError, ValueError):
+        return 0
 
 
 def navigate(page: str, movie_id: int | None = None) -> None:
@@ -83,15 +100,79 @@ def render_navbar(users: list[int]) -> None:
         st.button("Lịch sử", use_container_width=True, disabled=st.session_state.current_user is None, on_click=navigate, args=("history",))
 
 
-def render_movie_card(movie: dict[str, Any], key: str) -> None:
+def render_global_styles() -> None:
+    st.markdown(
+        """
+        <style>
+        div[data-testid="stHorizontalBlock"]:has(.movie-row-marker) {
+            display: flex !important;
+            flex-wrap: nowrap !important;
+            overflow-x: auto !important;
+            padding-bottom: 18px !important;
+            scroll-behavior: smooth;
+        }
+        div[data-testid="stHorizontalBlock"]:has(.movie-row-marker) > div {
+            min-width: 220px !important;
+            max-width: 220px !important;
+            flex: 0 0 220px !important;
+            margin-right: 12px !important;
+        }
+        div[data-testid="stHorizontalBlock"]:has(.movie-row-marker)::-webkit-scrollbar { height: 9px; }
+        div[data-testid="stHorizontalBlock"]:has(.movie-row-marker)::-webkit-scrollbar-thumb { background: #f5c518; border-radius: 10px; }
+        div[data-testid="stHorizontalBlock"]:has(.movie-row-marker)::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.08); border-radius: 10px; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_hero_banner() -> None:
+    data = api_get("/movies/trending", top_k=1)
+    movies = movie_list(data)
+    if not movies:
+        return
+    movie = movies[0]
     movie_id = int(movie.get("movie_id") or movie.get("movieId") or 0)
+    title = safe_text(clean_title(movie.get("title", "")))
+    genres = safe_text(str(movie.get("tmdb_genres") or movie.get("genres") or "").replace("|", ", "))
+    overview = safe_text(movie.get("overview") or "")
+    score = float(movie.get("vote_average") or movie.get("score") or 0.0)
+    poster_url = str(movie.get("poster_url") or "")
+    background = poster_url if poster_url.startswith("http") else "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&w=1600&q=80"
+    st.markdown(
+        f"""
+        <div style="width:100%; min-height:360px; border-radius:8px; margin:10px 0 24px 0; padding:42px; box-sizing:border-box;
+             display:flex; flex-direction:column; justify-content:flex-end;
+             background:
+               linear-gradient(to right, rgba(12,12,12,0.98), rgba(12,12,12,0.70), rgba(12,12,12,0.05)),
+               linear-gradient(to top, rgba(12,12,12,0.95), rgba(12,12,12,0.15)),
+               url('{background}') center top / cover no-repeat;">
+          <div style="max-width:720px;">
+            <h1 style="font-size:42px; line-height:1.1; margin:0 0 12px 0;">{title}</h1>
+            <div style="font-size:16px; color:#ddd; margin-bottom:12px;">
+              <span style="color:#f5c518; font-weight:700;">⭐ {score:.1f}</span>
+              <span style="color:#777; padding:0 8px;">|</span>{genres}
+            </div>
+            <p style="color:#ccc; font-size:15px; line-height:1.5; max-width:660px;">{overview[:280]}</p>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    if movie_id > 0:
+        st.button("Xem chi tiết phim nổi bật", key=f"hero_{movie_id}", type="primary", on_click=navigate, args=("detail", movie_id))
+
+
+def render_movie_card(movie: dict[str, Any], key: str) -> None:
+    movie_id = parse_movie_id(movie)
     title = clean_title(movie.get("title", ""))
     with st.container(border=True):
+        st.markdown('<span class="movie-row-marker" style="display:none;"></span>', unsafe_allow_html=True)
         poster_url = movie.get("poster_url")
         if poster_url:
             st.image(poster_url, use_container_width=True)
         else:
-            st.markdown("<div style='height:260px;background:#202124;border-radius:6px;'></div>", unsafe_allow_html=True)
+            st.markdown("<div style='width:100%;aspect-ratio:2/3;background:#202124;border-radius:6px;'></div>", unsafe_allow_html=True)
         st.markdown(f"**{title}**")
         genres = str(movie.get("tmdb_genres") or movie.get("genres") or "").replace("|", ", ")
         if genres:
@@ -114,7 +195,7 @@ def render_movie_row(title: str, movies: list[dict[str, Any]], row_key: str) -> 
     if not movies:
         return
     st.subheader(title)
-    columns = st.columns(min(5, len(movies)))
+    columns = st.columns(min(15, len(movies)))
     for idx, movie in enumerate(movies[:15]):
         with columns[idx % len(columns)]:
             render_movie_card(movie, f"{row_key}_{idx}")
@@ -136,6 +217,7 @@ def recommend(user_id: int | None, model_name: str, top_k: int = 15) -> list[dic
 
 def render_home_page() -> None:
     st.title("Gợi ý phim")
+    render_hero_banner()
     col_title, col_model = st.columns([2, 1])
     with col_model:
         model_label = st.radio("Mô hình", ["Hybrid", "LightGCN", "Content", "Popularity"], horizontal=True)
@@ -182,6 +264,13 @@ def render_history_page() -> None:
     if not movies:
         st.info("Chưa có lịch sử trong artifacts hoặc rating sidecar.")
         return
+    sort_option = st.selectbox("Sắp xếp", ["Nguồn dữ liệu", "Điểm đánh giá giảm dần", "Tên phim A-Z", "Tên phim Z-A"])
+    if sort_option == "Điểm đánh giá giảm dần":
+        movies = sorted(movies, key=lambda movie: float(movie.get("user_rating") or 0.0), reverse=True)
+    elif sort_option == "Tên phim A-Z":
+        movies = sorted(movies, key=lambda movie: clean_title(movie.get("title", "")).lower())
+    elif sort_option == "Tên phim Z-A":
+        movies = sorted(movies, key=lambda movie: clean_title(movie.get("title", "")).lower(), reverse=True)
     rows = []
     for movie in movies:
         rows.append(
@@ -230,12 +319,20 @@ def render_detail_page(movie_id: int | None) -> None:
             existing = api_get(f"/rate/{user_id}/{movie_id}") or {}
             current_rating = existing.get("rating")
             with st.form(f"rating_{user_id}_{movie_id}"):
-                rating = st.slider("Đánh giá của bạn", min_value=0.5, max_value=5.0, value=float(current_rating or 4.0), step=0.5)
-                submitted = st.form_submit_button("Lưu đánh giá")
+                rating = st.slider(
+                    "Đánh giá của bạn",
+                    min_value=0.5,
+                    max_value=5.0,
+                    value=float(current_rating or 4.0),
+                    step=0.5,
+                    disabled=current_rating is not None,
+                )
+                submitted = st.form_submit_button("Lưu đánh giá" if current_rating is None else "Đã đánh giá", disabled=current_rating is not None)
             if submitted:
                 saved = api_post("/rate", {"user_id": user_id, "movie_id": movie_id, "rating": rating})
                 if saved:
                     st.success("Đã lưu đánh giá.")
+                    st.rerun()
 
     similar = movie_list(api_get(f"/movies/{movie_id}/similar", top_k=15))
     render_movie_row("Có thể bạn cũng thích", similar, f"similar_{movie_id}")
@@ -298,6 +395,7 @@ def render_chatbot_page() -> None:
 def main() -> None:
     st.set_page_config(page_title="movierec", layout="wide")
     init_state()
+    render_global_styles()
     users = load_users()
     render_navbar(users)
     page_tabs = st.tabs(["Trang chính", "Chatbot", "Đánh giá", "Trạng thái"])

@@ -4,8 +4,11 @@ services:
     command: uvicorn api.main:app --host 0.0.0.0 --port 8000
     environment:
       - ARTIFACTS_DIR=/app/artifacts
+      - RATINGS_STORE_PATH=/app/artifacts/runtime/user_ratings.csv
       - TMDB_API_KEY=${TMDB_API_KEY:-}
       - TMDB_LANGUAGE=${TMDB_LANGUAGE:-vi-VN}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - CHAT_MODEL=${CHAT_MODEL:-gpt-4.1-mini}
     volumes:
       - ./artifacts:/app/artifacts
       - ./data:/app/data
@@ -19,6 +22,8 @@ services:
       - API_URL=http://api:8000
       - ARTIFACTS_DIR=/app/artifacts
       - TMDB_API_KEY=${TMDB_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - CHAT_MODEL=${CHAT_MODEL:-gpt-4.1-mini}
     volumes:
       - ./artifacts:/app/artifacts
       - ./data:/app/data
@@ -26,3 +31,14 @@ services:
       - "8501:8501"
     depends_on:
       - api
+
+  eda:
+    build: .
+    command: streamlit run app/eda_app.py --server.address 0.0.0.0 --server.port 8502
+    environment:
+      - ARTIFACTS_DIR=/app/artifacts
+    volumes:
+      - ./artifacts:/app/artifacts
+      - ./data:/app/data
+    ports:
+      - "8502:8502"

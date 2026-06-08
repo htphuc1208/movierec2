@@ -225,6 +225,14 @@ Truy cập:
 
     http://localhost:8501
 
+Dashboard EDA chạy riêng:
+
+    PYTHONPATH=src:. streamlit run app/eda_app.py --server.port 8502
+
+Truy cập:
+
+    http://localhost:8502
+
 
 8. Chạy bằng Docker Compose
 ---------------------------
@@ -235,6 +243,7 @@ Truy cập:
 Các cổng:
 - FastAPI: http://localhost:8000
 - Streamlit: http://localhost:8501
+- EDA dashboard: http://localhost:8502
 
 Lưu ý: Docker image cài torch và sentence-transformers nên lần build đầu có thể lâu.
 
