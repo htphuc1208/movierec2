@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -40,8 +41,8 @@ from recommender.models.matrix_factorization import (
     LightGCNRecommender,
     NeuMFRecommender,
 )
-from recommender.models.rankers import SGDRankHybridRecommender, WeightedHybridRecommender
-from recommender.models.two_tower import EmbeddingBackend, encode_item_texts
+from recommender.models.rankers import SGDRankHybridRecommender, StrongHybridRankerRecommender, WeightedHybridRecommender
+from recommender.models.two_tower import EmbeddingBackend, build_item_text, encode_item_texts
 
 
 @dataclass
@@ -62,6 +63,7 @@ class ExperimentDataset:
     content_embeddings: np.ndarray | None = None
     content_embeddings_no_tmdb: np.ndarray | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+    split_stats: dict[str, Any] = field(default_factory=dict)
 
     @property
     def num_users(self) -> int:
@@ -88,6 +90,10 @@ class ComparisonConfig:
     max_ease_items: int = 8000
     max_slim_items: int = 1000
     max_ranker_samples: int = 200_000
+    preset: str = "none"
+    hybrid_grid_step: float = 0.25
+    embedding_cache_dir: Path | None = Path(".cache/recommender/content_embeddings")
+    use_content_cache: bool = True
     seed: int = 42
 
 
@@ -103,13 +109,20 @@ def load_experiment_dataset(
     raw = read_movielens(data_dir)
     prepared = prepare_interactions(raw.ratings, min_rating=config.min_rating)
     catalog = _ordered_catalog(raw.movies, enriched_catalog, prepared.item_mapping)
-    content_embeddings = encode_item_texts(catalog, backend=config.content_backend, model_name=config.sbert_model)
-    content_embeddings_no_tmdb = encode_item_texts(
+    content_embeddings = encode_item_texts_cached(
+        catalog,
+        dataset_name=name,
+        variant="full",
+        config=config,
+    )
+    content_embeddings_no_tmdb = encode_item_texts_cached(
         _catalog_without_tmdb_text(catalog),
-        backend=config.content_backend,
-        model_name=config.sbert_model,
+        dataset_name=name,
+        variant="no_tmdb",
+        config=config,
     )
     train_matrix = build_sparse_interaction_matrix(prepared.train, prepared.num_users, prepared.num_items)
+    split_stats = _split_stats(prepared.train, prepared.val, prepared.test, train_matrix)
     split_strategy = "random_per_user_synthetic_timestamp" if name == "letterboxd" else "timestamp_per_user"
     return ExperimentDataset(
         name=name,
@@ -125,12 +138,14 @@ def load_experiment_dataset(
         item_mapping=prepared.item_mapping,
         content_embeddings=content_embeddings,
         content_embeddings_no_tmdb=content_embeddings_no_tmdb,
+        split_stats=split_stats,
         metadata={
             "data_dir": str(data_dir),
             "enriched_catalog": str(enriched_catalog) if enriched_catalog else "",
             "split_strategy": split_strategy,
             "min_rating": config.min_rating,
             "content_backend": config.content_backend,
+            "split_stats": split_stats,
         },
     )
 
@@ -148,9 +163,9 @@ def run_comparison_for_dataset(dataset: ExperimentDataset, config: ComparisonCon
         SVDRankingRecommender(n_components=config.svd_components, random_state=config.seed),
         EASERecommender(max_items=config.max_ease_items),
         ContentAverageRecommender(name=f"{config.content_backend}_only", embedding_attr="content_embeddings"),
-        BPRMFRecommender(embedding_dim=config.mf_dim, epochs=config.epochs, device=config.device, seed=config.seed),
-        LightGCNRecommender(embedding_dim=config.mf_dim, epochs=config.epochs, device=config.device, seed=config.seed),
-        LearnedTwoTowerRecommender(embedding_dim=config.mf_dim, epochs=config.epochs, device=config.device, seed=config.seed),
+        BPRMFRecommender(embedding_dim=config.mf_dim, epochs=config.epochs, batch_size=config.batch_size, device=config.device, seed=config.seed),
+        LightGCNRecommender(embedding_dim=config.mf_dim, epochs=config.epochs, batch_size=config.batch_size, device=config.device, seed=config.seed),
+        LearnedTwoTowerRecommender(embedding_dim=config.mf_dim, epochs=config.epochs, batch_size=config.batch_size, device=config.device, seed=config.seed),
     ]
     if config.models == "full":
         base_models.extend(
@@ -158,7 +173,7 @@ def run_comparison_for_dataset(dataset: ExperimentDataset, config: ComparisonCon
                 SLIMElasticNetRecommender(max_items=config.max_slim_items),
                 ImplicitALSRecommender(factors=config.mf_dim, iterations=max(1, config.epochs)),
                 LightFMWARPRecommender(no_components=config.mf_dim, epochs=max(1, config.epochs), random_state=config.seed),
-                NeuMFRecommender(embedding_dim=max(8, config.mf_dim // 2), epochs=config.epochs, device=config.device, seed=config.seed),
+                NeuMFRecommender(embedding_dim=max(8, config.mf_dim // 2), epochs=config.epochs, batch_size=config.batch_size, device=config.device, seed=config.seed),
             ]
         )
 
@@ -182,6 +197,8 @@ def run_comparison_for_dataset(dataset: ExperimentDataset, config: ComparisonCon
         ("hybrid_ranker_full", "ranker", hybrid_components, True),
         ("hybrid_no_tmdb", "weighted", no_tmdb_components, True),
     ]
+    if config.preset in {"letterboxd-pdf-clean", "letterboxd-strong"}:
+        hybrid_specs.insert(0, ("hybrid_pdf_clean", "weighted", hybrid_components, True))
     for name, kind, component_names, include_popularity in hybrid_specs:
         components, missing = _collect_components(fitted, component_names)
         if missing:
@@ -193,6 +210,7 @@ def run_comparison_for_dataset(dataset: ExperimentDataset, config: ComparisonCon
                 include_popularity=include_popularity,
                 tune=True,
                 k=config.k,
+                grid_step=config.hybrid_grid_step if name == "hybrid_pdf_clean" else 0.25,
                 name=name,
             )
         else:
@@ -207,6 +225,36 @@ def run_comparison_for_dataset(dataset: ExperimentDataset, config: ComparisonCon
         rows.append(row)
         if row["status"] == "ok":
             fitted[row["model"]] = model
+
+    if config.preset == "letterboxd-strong":
+        strong_names = [
+            "lightgcn_only",
+            "learned_two_tower",
+            f"{config.content_backend}_only",
+            "ease",
+            "item_knn_cosine",
+            "user_knn_cosine",
+            "svd_ranking",
+            "lightfm_warp",
+            "implicit_als",
+            "popularity_only",
+        ]
+        components, missing = _collect_available_components(fitted, strong_names)
+        if len(components) < 2:
+            rows.append(skipped_row(dataset, "hybrid_strong_ranker", "skipped_dependency", f"not enough fitted components; missing: {', '.join(missing)}"))
+        else:
+            model = StrongHybridRankerRecommender(
+                components=components,
+                include_popularity=True,
+                max_train_samples=config.max_ranker_samples,
+                seed=config.seed,
+                ranker="auto",
+            )
+            model, row = fit_and_evaluate_model(dataset, model, config)
+            row["metadata"]["missing_optional_components"] = missing
+            rows.append(row)
+            if row["status"] == "ok":
+                fitted[row["model"]] = model
 
     return rows
 
@@ -253,9 +301,11 @@ def fit_and_evaluate_model(
             k=config.k,
             batch_size=config.batch_size,
         )
+        metrics.update(evaluate_slice_metrics(dataset, lambda users: fitted.score_users(users), config))
         return fitted, {
             "dataset": dataset.name,
             "model": fitted.name,
+            "group": _model_group(fitted.name),
             "status": "ok",
             "metrics": metrics,
             "seconds": round(time.perf_counter() - start, 4),
@@ -280,6 +330,7 @@ def skipped_row(
     return {
         "dataset": dataset.name,
         "model": model_name,
+        "group": _model_group(model_name),
         "status": status,
         "error": error,
         "seconds": round(seconds, 4),
@@ -317,6 +368,31 @@ def _ordered_catalog(raw_movies: pd.DataFrame, enriched_path: Path | None, item_
     return catalog
 
 
+def encode_item_texts_cached(
+    catalog: pd.DataFrame,
+    dataset_name: str,
+    variant: str,
+    config: ComparisonConfig,
+) -> np.ndarray:
+    if not config.use_content_cache or config.embedding_cache_dir is None:
+        return encode_item_texts(catalog, backend=config.content_backend, model_name=config.sbert_model)
+    cache_dir = Path(config.embedding_cache_dir)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    docs = build_item_text(catalog)
+    digest = hashlib.sha256()
+    digest.update(config.content_backend.encode("utf-8"))
+    digest.update(config.sbert_model.encode("utf-8"))
+    digest.update("\n".join(docs).encode("utf-8", errors="ignore"))
+    key = digest.hexdigest()[:20]
+    model_key = config.sbert_model.split("/")[-1].replace(":", "_")
+    cache_path = cache_dir / f"{dataset_name}_{variant}_{config.content_backend}_{model_key}_{key}.npy"
+    if cache_path.exists():
+        return np.load(cache_path).astype(np.float32)
+    embeddings = encode_item_texts(catalog, backend=config.content_backend, model_name=config.sbert_model)
+    np.save(cache_path, embeddings.astype(np.float32))
+    return embeddings.astype(np.float32)
+
+
 def _catalog_without_tmdb_text(catalog: pd.DataFrame) -> pd.DataFrame:
     stripped = catalog.copy()
     for field in ENRICHED_TEXT_FIELDS:
@@ -337,6 +413,98 @@ def _collect_components(fitted: dict[str, Any], names: list[str]) -> tuple[list[
     return components, missing
 
 
+def _collect_available_components(fitted: dict[str, Any], names: list[str]) -> tuple[list[Any], list[str]]:
+    components: list[Any] = []
+    missing: list[str] = []
+    for name in names:
+        component = fitted.get(name)
+        if component is None:
+            missing.append(name)
+        else:
+            components.append(component)
+    return components, missing
+
+
+def evaluate_slice_metrics(dataset: ExperimentDataset, score_fn, config: ComparisonConfig) -> dict[str, float]:
+    metrics: dict[str, float] = {}
+    for prefix, ground_truth in _slice_ground_truths(dataset).items():
+        if not ground_truth:
+            continue
+        values = evaluate_score_fn(
+            dataset.num_users,
+            dataset.num_items,
+            score_fn,
+            dataset.train_user_items,
+            ground_truth,
+            k=config.k,
+            batch_size=config.batch_size,
+        )
+        for key, value in values.items():
+            metrics[f"{prefix}_{key}"] = value
+    return metrics
+
+
+def _slice_ground_truths(dataset: ExperimentDataset) -> dict[str, dict[int, set[int]]]:
+    train_counts = np.asarray([len(dataset.train_user_items.get(user, set())) for user in range(dataset.num_users)], dtype=np.float32)
+    active_counts = train_counts[train_counts > 0]
+    sparse_threshold = float(np.percentile(active_counts, 25)) if active_counts.size else 0.0
+    item_counts = np.asarray(dataset.train_matrix.sum(axis=0)).ravel().astype(np.float32)
+    nonzero_item_counts = item_counts[item_counts > 0]
+    tail_threshold = float(np.percentile(nonzero_item_counts, 50)) if nonzero_item_counts.size else 0.0
+    head_threshold = float(np.percentile(nonzero_item_counts, 75)) if nonzero_item_counts.size else 0.0
+    tail_items = {int(idx) for idx, count in enumerate(item_counts) if 0 < count <= tail_threshold}
+    head_items = {int(idx) for idx, count in enumerate(item_counts) if count >= head_threshold and count > 0}
+    result = {
+        "sparse_user": {},
+        "warm_user": {},
+        "long_tail": {},
+        "head_item": {},
+    }
+    for user, truth in dataset.test_user_items.items():
+        if not truth:
+            continue
+        if train_counts[int(user)] <= sparse_threshold:
+            result["sparse_user"][int(user)] = set(truth)
+        else:
+            result["warm_user"][int(user)] = set(truth)
+        tail_truth = set(truth) & tail_items
+        if tail_truth:
+            result["long_tail"][int(user)] = tail_truth
+        head_truth = set(truth) & head_items
+        if head_truth:
+            result["head_item"][int(user)] = head_truth
+    return result
+
+
+def _split_stats(train: pd.DataFrame, val: pd.DataFrame, test: pd.DataFrame, train_matrix: sparse.csr_matrix) -> dict[str, Any]:
+    train_counts = train.groupby("user_idx").size() if not train.empty else pd.Series(dtype=np.int64)
+    item_counts = np.asarray(train_matrix.sum(axis=0)).ravel().astype(np.float32)
+    nonzero_item_counts = item_counts[item_counts > 0]
+    sparse_threshold = float(train_counts.quantile(0.25)) if not train_counts.empty else 0.0
+    tail_threshold = float(np.percentile(nonzero_item_counts, 50)) if nonzero_item_counts.size else 0.0
+    head_threshold = float(np.percentile(nonzero_item_counts, 75)) if nonzero_item_counts.size else 0.0
+    return {
+        "users": int(train_matrix.shape[0]),
+        "items": int(train_matrix.shape[1]),
+        "train_interactions": int(len(train)),
+        "val_interactions": int(len(val)),
+        "test_interactions": int(len(test)),
+        "train_users": int(train_counts.size),
+        "train_items_nonzero": int(np.count_nonzero(item_counts)),
+        "train_interactions_per_user_mean": float(train_counts.mean()) if not train_counts.empty else 0.0,
+        "train_interactions_per_user_median": float(train_counts.median()) if not train_counts.empty else 0.0,
+        "train_interactions_per_user_q25": sparse_threshold,
+        "train_interactions_per_user_q75": float(train_counts.quantile(0.75)) if not train_counts.empty else 0.0,
+        "sparse_users": int((train_counts <= sparse_threshold).sum()) if not train_counts.empty else 0,
+        "warm_users": int((train_counts > sparse_threshold).sum()) if not train_counts.empty else 0,
+        "sparse_user_threshold_q25": sparse_threshold,
+        "long_tail_items": int(np.sum((item_counts > 0) & (item_counts <= tail_threshold))),
+        "head_items": int(np.sum((item_counts > 0) & (item_counts >= head_threshold))),
+        "tail_item_threshold_q50": tail_threshold,
+        "head_item_threshold_q75": head_threshold,
+    }
+
+
 def _skip_status(message: str) -> str:
     lower = message.lower()
     if "not installed" in lower or "requires" in lower or "missing fitted components" in lower:
@@ -349,9 +517,10 @@ def _skip_status(message: str) -> str:
 def _flatten_row(row: dict[str, Any], k: int) -> dict[str, Any]:
     metrics = row.get("metrics", {}) or {}
     metadata = row.get("metadata", {}) or {}
-    return {
+    flattened = {
         "dataset": row.get("dataset", ""),
         "model": row.get("model", ""),
+        "group": row.get("group", _model_group(row.get("model", ""))),
         "status": row.get("status", ""),
         f"precision@{k}": metrics.get(f"precision@{k}", ""),
         f"recall@{k}": metrics.get(f"recall@{k}", ""),
@@ -361,6 +530,9 @@ def _flatten_row(row: dict[str, Any], k: int) -> dict[str, Any]:
         "error": row.get("error", ""),
         "metadata_json": json.dumps(_jsonable(metadata), ensure_ascii=False),
     }
+    for key, value in metrics.items():
+        flattened.setdefault(key, value)
+    return flattened
 
 
 def _summary_markdown(rows: list[dict[str, Any]], k: int) -> str:
@@ -374,18 +546,40 @@ def _summary_markdown(rows: list[dict[str, Any]], k: int) -> str:
         dataset_rows = [row for row in rows if row.get("dataset") == dataset and row.get("include_in_summary", True)]
         ok_rows = [row for row in dataset_rows if row.get("status") == "ok"]
         ok_rows.sort(key=lambda row: row.get("metrics", {}).get(f"ndcg@{k}", 0.0), reverse=True)
-        lines.extend(["", f"## {dataset}", "", f"| Model | Precision@{k} | Recall@{k} | NDCG@{k} | MRR | Seconds |", "|---|---:|---:|---:|---:|---:|"])
+        lines.extend(["", f"## {dataset}"])
+        stats = _first_split_stats(dataset_rows)
+        if stats:
+            lines.extend(
+                [
+                    "",
+                    "Split stats:",
+                    "",
+                    (
+                        f"- users={int(stats.get('users', 0))}, items={int(stats.get('items', 0))}, "
+                        f"train={int(stats.get('train_interactions', 0))}, val={int(stats.get('val_interactions', 0))}, "
+                        f"test={int(stats.get('test_interactions', 0))}"
+                    ),
+                    (
+                        f"- sparse_users={int(stats.get('sparse_users', 0))}, warm_users={int(stats.get('warm_users', 0))}, "
+                        f"long_tail_items={int(stats.get('long_tail_items', 0))}, head_items={int(stats.get('head_items', 0))}"
+                    ),
+                ]
+            )
+        lines.extend(["", f"| Group | Model | Precision@{k} | Recall@{k} | NDCG@{k} | MRR | Sparse NDCG@{k} | Tail NDCG@{k} | Seconds |", "|---|---|---:|---:|---:|---:|---:|---:|---:|"])
         if not ok_rows:
             lines.append("| none |  |  |  |  |  |")
         for row in ok_rows:
             metrics = row.get("metrics", {})
             lines.append(
-                "| {model} | {precision:.4f} | {recall:.4f} | {ndcg:.4f} | {mrr:.4f} | {seconds:.2f} |".format(
+                "| {group} | {model} | {precision:.4f} | {recall:.4f} | {ndcg:.4f} | {mrr:.4f} | {sparse:.4f} | {tail:.4f} | {seconds:.2f} |".format(
+                    group=row.get("group", _model_group(row.get("model", ""))),
                     model=row.get("model", ""),
                     precision=float(metrics.get(f"precision@{k}", 0.0)),
                     recall=float(metrics.get(f"recall@{k}", 0.0)),
                     ndcg=float(metrics.get(f"ndcg@{k}", 0.0)),
                     mrr=float(metrics.get("mrr", 0.0)),
+                    sparse=float(metrics.get(f"sparse_user_ndcg@{k}", 0.0)),
+                    tail=float(metrics.get(f"long_tail_ndcg@{k}", 0.0)),
                     seconds=float(row.get("seconds", 0.0)),
                 )
             )
@@ -397,6 +591,45 @@ def _summary_markdown(rows: list[dict[str, Any]], k: int) -> str:
                 lines.append(f"- `{row.get('model', '')}`: `{row.get('status', '')}` {error}")
     lines.append("")
     return "\n".join(lines)
+
+
+def _first_split_stats(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    for row in rows:
+        stats = (row.get("metadata", {}) or {}).get("split_stats", {})
+        if stats:
+            return stats
+    return {}
+
+
+def _model_group(model_name: str) -> str:
+    if model_name == "hybrid_strong_ranker":
+        return "strongest_ranker"
+    if model_name in {
+        "random",
+        "popularity_only",
+        "item_knn_cosine",
+        "user_knn_cosine",
+        "svd_ranking",
+        "bpr_mf",
+        "ease",
+        "slim_elasticnet",
+        "implicit_als",
+        "lightfm_warp",
+        "neumf",
+    }:
+        return "baselines"
+    if model_name in {
+        "hybrid_pdf_clean",
+        "lightgcn_only",
+        "learned_two_tower",
+        "hybrid_weighted_no_popularity",
+        "hybrid_weighted_full",
+        "hybrid_ranker_no_popularity",
+        "hybrid_ranker_full",
+        "hybrid_no_tmdb",
+    } or model_name.endswith("_only") or model_name.endswith("_no_tmdb_only"):
+        return "pdf_clean_and_ablation"
+    return "baselines"
 
 
 def _jsonable(value: Any) -> Any:
@@ -411,4 +644,3 @@ def _jsonable(value: Any) -> Any:
     if isinstance(value, Path):
         return str(value)
     return value
-

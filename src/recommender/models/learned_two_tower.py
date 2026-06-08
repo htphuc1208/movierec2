@@ -9,19 +9,21 @@ import numpy as np
 
 from recommender.models.base import ModelSkip
 
-
+# học vector cho user, học cách biến content embed của item thành vector item 
+# mục tiêu của mô hình: học ranking
+# score (user, postitive item) > score (user, negative item)
 @dataclass
 class LearnedTwoTowerRecommender:
-    embedding_dim: int = 64
-    hidden_dim: int = 128
+    embedding_dim: int = 64 # số chiều vector user/item sau khi học
+    hidden_dim: int = 128 # số neuron tầng ẩn trong item tower
     epochs: int = 10
     batch_size: int = 4096
     learning_rate: float = 1e-3
-    reg_weight: float = 1e-4
+    reg_weight: float = 1e-4 # trọng số regularization
     seed: int = 42
     device: str = "cpu"
-    embedding_attr: str = "content_embeddings"
-    name: str = "learned_two_tower"
+    embedding_attr: str = "content_embeddings" # 	lấy item feature từ dataset, mặc định là content_embeddings
+    name: str = "learned_two_tower" 
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def fit(self, dataset) -> "LearnedTwoTowerRecommender":
@@ -31,7 +33,7 @@ class LearnedTwoTowerRecommender:
         except ImportError as exc:
             raise ModelSkip("torch is not installed") from exc
         from recommender.models.losses import bpr_loss, sample_bpr_triplets
-
+        # lấy item features đã tạo từ TwoTower.py, nếu không có thì bỏ qua mô hình này
         item_features = getattr(dataset, self.embedding_attr)
         if item_features is None:
             raise ModelSkip(f"{self.embedding_attr} is unavailable")
@@ -39,13 +41,15 @@ class LearnedTwoTowerRecommender:
         class _TwoTower(nn.Module):
             def __init__(self, num_users: int, feature_dim: int, dim: int, hidden: int) -> None:
                 super().__init__()
-                self.user_tower = nn.Embedding(num_users, dim)
+                self.user_tower = nn.Embedding(num_users, dim)# bảng embedding cho user
+                # item tower là một MLP đơn giản, đầu vào là feature_dim, qua một hidden layer với ReLU activation, ra output có dim chiều, 
+                # sau đó sẽ được normalize để học cosine similarity
                 self.item_tower = nn.Sequential(nn.Linear(feature_dim, hidden), nn.ReLU(), nn.Linear(hidden, dim))
                 nn.init.normal_(self.user_tower.weight, std=0.1)
-
+            
+            # normalize output giup vector co do dai 1, khi do dot prouct tuong duong cosine similarity, giúp học dễ dàng hơn khi chỉ cần quan tâm đến góc giữa vector user và item thay vì độ dài của chúng
             def encode_items(self, features):
                 return torch.nn.functional.normalize(self.item_tower(features), dim=-1)
-
             def encode_users(self, users):
                 return torch.nn.functional.normalize(self.user_tower(users), dim=-1)
 
@@ -70,6 +74,7 @@ class LearnedTwoTowerRecommender:
                 optimizer.zero_grad()
                 pos_scores = model(batch_users, torch_features[batch_pos])
                 neg_scores = model(batch_users, torch_features[batch_neg])
+                # Đây là L2 regularization trên user embedding.Tránh phình user embedding, giảm overfit, ổn định training
                 reg = model.user_tower(batch_users).norm(2).pow(2) / max(1, len(batch_users))
                 loss = bpr_loss(pos_scores, neg_scores, reg_loss=reg, reg_weight=self.reg_weight)
                 loss.backward()

@@ -1,0 +1,33 @@
+Letterboxd raw merge report
+Generated at: 2026-06-08T09:50:30+00:00
+Old raw dir: data/letterboxd/data/raw_before_merge_20260608_164815
+New raw dir: data/letterboxd/_new_crawl/raw
+Merged raw dir: data/letterboxd/data/raw
+
+Overlap by key:
+- users: old=1,645, new=10,508, overlap=1,645, old_only=0, new_only=8,863, merged=10,508
+- movies_seed: old=30,000, new=320,533, overlap=30,000, old_only=0, new_only=290,533, merged=320,533
+- interactions: old=121,157, new=836,498, overlap=121,157, old_only=0, new_only=715,341, merged=836,498
+- crawl_state: old=1,654, new=10,517, overlap=1,654, old_only=0, new_only=8,863, merged=10,517
+- seed_user_candidates: old=1,612, new=8,889, overlap=5, old_only=1,607, new_only=8,884, merged=10,496
+
+Merged raw dataset:
+- Users: 10,508
+- Users with interactions: 10,501
+- Movies: 320,533
+- Interactions: 836,498
+- Non-null ratings: 650,113
+- Avg interactions/user: 79.66
+- Avg interactions/movie: 2.61
+- Interaction types: {'favorite': 36715, 'watched': 158462, 'liked': 10336, 'rating': 613398, 'diary': 10007, 'review': 7580}
+- Users with <10 interactions: 458
+- Movies with <5 interactions: 312,557
+
+Merged CF-ready dataset after k-core filtering:
+- K-core: min_user_interactions=10, min_movie_interactions=5
+- Users: 9,197
+- Movies: 7,848
+- Interactions: 503,761
+- Non-null ratings: 366,892
+- Avg interactions/user: 54.77
+- Avg interactions/movie: 64.19

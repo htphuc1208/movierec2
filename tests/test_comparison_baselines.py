@@ -4,10 +4,10 @@ import numpy as np
 import pandas as pd
 from scipy import sparse
 
-from recommender.experiments.comparison import ComparisonConfig, ExperimentDataset, fit_and_evaluate_model
+from recommender.experiments.comparison import ComparisonConfig, ExperimentDataset, encode_item_texts_cached, fit_and_evaluate_model
 from recommender.models.baselines import ContentAverageRecommender, EASERecommender, ItemKNNRecommender, PopularityRecommender, UserKNNRecommender
 from recommender.models.matrix_factorization import _sample_binary_examples
-from recommender.models.rankers import SGDRankHybridRecommender, WeightedHybridRecommender
+from recommender.models.rankers import SGDRankHybridRecommender, StrongHybridRankerRecommender, WeightedHybridRecommender
 
 
 def _dataset() -> ExperimentDataset:
@@ -103,3 +103,19 @@ def test_hybrid_rankers_evaluate_on_synthetic_dataset() -> None:
     assert ranker_row["status"] == "ok"
     assert "precision@2" in ranker_row["metrics"]
 
+    strong = StrongHybridRankerRecommender([popularity, content], include_popularity=True, max_train_samples=100, ranker="sgd")
+    _, strong_row = fit_and_evaluate_model(dataset, strong, config)
+    assert strong_row["status"] == "ok"
+    assert strong_row["metadata"]["ranker"] == "sgd_fallback"
+    assert "genre_overlap" in strong_row["metadata"]["feature_names"]
+
+
+def test_content_embedding_cache_roundtrip(tmp_path) -> None:
+    dataset = _dataset()
+    config = ComparisonConfig(content_backend="tfidf", embedding_cache_dir=tmp_path, use_content_cache=True)
+
+    first = encode_item_texts_cached(dataset.catalog, dataset_name="synthetic", variant="full", config=config)
+    second = encode_item_texts_cached(dataset.catalog, dataset_name="synthetic", variant="full", config=config)
+
+    assert np.allclose(first, second)
+    assert list(tmp_path.glob("synthetic_full_tfidf_*.npy"))

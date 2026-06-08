@@ -18,8 +18,9 @@ from recommender.inference.ratings_store import SidecarRatingStore
 class HybridArtifactRecommender:
     """Serve recommendations and catalog views from exported artifacts."""
 
-    def __init__(self, bundle: ArtifactBundle) -> None:
+    def __init__(self, bundle: ArtifactBundle, artifacts_dir: str | Path | None = None) -> None:
         self.bundle = bundle
+        self.artifacts_dir = Path(artifacts_dir) if artifacts_dir is not None else None
         self.catalog = bundle.catalog.reset_index(drop=True).copy()
         self.catalog["item_idx"] = np.arange(len(self.catalog))
         self.item_mapping = bundle.item_mapping
@@ -27,10 +28,13 @@ class HybridArtifactRecommender:
         self.index_to_movie_id = {idx: movie_id for movie_id, idx in self.item_mapping.items()}
         self.tmdb_to_item = self._build_tmdb_index(self.catalog)
         self._title_to_item = {str(row.title).lower(): int(row.item_idx) for row in self.catalog.itertuples(index=False)}
+        self.strong_ranker = None
+        self.strong_ranker_error = ""
+        self._load_strong_ranker()
 
     @classmethod
     def from_dir(cls, artifacts_dir: str | Path) -> "HybridArtifactRecommender":
-        return cls(load_artifact_bundle(artifacts_dir))
+        return cls(load_artifact_bundle(artifacts_dir), artifacts_dir=artifacts_dir)
 
     @staticmethod
     def _build_tmdb_index(catalog: pd.DataFrame) -> dict[str, int]:
@@ -56,12 +60,16 @@ class HybridArtifactRecommender:
         config = self.bundle.hybrid_config or {}
         return {
             "model_source": "artifact",
-            "model_name": "hybrid-artifact-lightgcn-content",
+            "model_name": config.get("model_type", "hybrid-artifact-lightgcn-content"),
             "user_count": len(self.user_mapping),
             "movie_count": len(self.item_mapping),
             "has_lightgcn": self.bundle.lightgcn_user_embeddings is not None and self.bundle.lightgcn_item_embeddings is not None,
+            "has_two_tower": self.bundle.two_tower_user_embeddings is not None and self.bundle.two_tower_item_embeddings is not None,
+            "has_strong_ranker": self.strong_ranker is not None,
+            "strong_ranker_error": self.strong_ranker_error,
             "weights": {
                 "cf": float(config.get("cf_weight", 0.0)),
+                "two_tower": float(config.get("two_tower_weight", 0.0)),
                 "content": float(config.get("content_weight", 0.0)),
                 "popularity": float(config.get("popularity_weight", 0.0)),
             },
@@ -194,16 +202,24 @@ class HybridArtifactRecommender:
         content_scores = self._content_scores(user_id, session_item_indices)
         popularity_scores = self.bundle.item_popularity.astype(np.float32)
         cf_scores, has_cf = self._cf_scores(user_id)
+        two_tower_scores, has_two_tower = self._two_tower_scores(user_id)
+        strong_scores, has_strong = self._strong_ranker_scores(user_id, allow_session=not session_item_indices)
         mode = self._normalise_model_name(model_name)
 
-        if mode == "lightgcn" and has_cf:
+        if mode == "strong" and has_strong:
+            scores = minmax(strong_scores)
+        elif mode == "hybrid" and has_strong and self.bundle.hybrid_config.get("model_type") == "strong_ranker":
+            scores = minmax(strong_scores)
+        elif mode == "lightgcn" and has_cf:
             scores = minmax(cf_scores)
+        elif mode == "two_tower" and has_two_tower:
+            scores = minmax(two_tower_scores)
         elif mode == "content":
             scores = minmax(content_scores)
         elif mode == "popularity":
             scores = minmax(popularity_scores)
         else:
-            scores = self._hybrid_scores(cf_scores, content_scores, popularity_scores, has_cf)
+            scores = self._hybrid_scores(cf_scores, two_tower_scores, content_scores, popularity_scores, has_cf, has_two_tower)
 
         blocked = set(session_item_indices)
         if exclude_seen and user_id is not None and int(user_id) in self.user_mapping:
@@ -242,19 +258,51 @@ class HybridArtifactRecommender:
             scores = (self.bundle.lightgcn_user_embeddings[user_idx] @ self.bundle.lightgcn_item_embeddings.T).astype(np.float32)
         return scores, has_cf
 
+    def _two_tower_scores(self, user_id: int | None) -> tuple[np.ndarray, bool]:
+        scores = np.zeros(len(self.catalog), dtype=np.float32)
+        has_two_tower = (
+            user_id is not None
+            and int(user_id) in self.user_mapping
+            and self.bundle.two_tower_user_embeddings is not None
+            and self.bundle.two_tower_item_embeddings is not None
+        )
+        if has_two_tower:
+            user_idx = self.user_mapping[int(user_id)]
+            scores = (self.bundle.two_tower_user_embeddings[user_idx] @ self.bundle.two_tower_item_embeddings.T).astype(np.float32)
+        return scores, has_two_tower
+
+    def _strong_ranker_scores(self, user_id: int | None, allow_session: bool = True) -> tuple[np.ndarray, bool]:
+        scores = np.zeros(len(self.catalog), dtype=np.float32)
+        if not allow_session or self.strong_ranker is None or user_id is None or int(user_id) not in self.user_mapping:
+            return scores, False
+        user_idx = self.user_mapping[int(user_id)]
+        try:
+            ranker_scores = self.strong_ranker.score_users(np.asarray([user_idx], dtype=np.int64))[0]
+        except Exception as exc:
+            self.strong_ranker_error = str(exc)
+            return scores, False
+        if len(ranker_scores) != len(self.catalog):
+            self.strong_ranker_error = f"ranker returned {len(ranker_scores)} scores for {len(self.catalog)} catalog items"
+            return scores, False
+        return np.asarray(ranker_scores, dtype=np.float32), True
+
     def _hybrid_scores(
         self,
         cf_scores: np.ndarray,
+        two_tower_scores: np.ndarray,
         content_scores: np.ndarray,
         popularity_scores: np.ndarray,
         has_cf: bool,
+        has_two_tower: bool,
     ) -> np.ndarray:
         weights = self.bundle.hybrid_config or {}
         cf_weight = float(weights.get("cf_weight", 0.45 if has_cf else 0.0))
+        two_tower_weight = float(weights.get("two_tower_weight", 0.0 if not has_two_tower else 0.35))
         content_weight = float(weights.get("content_weight", 0.45 if has_cf else 0.85))
         popularity_weight = float(weights.get("popularity_weight", 0.10 if has_cf else 0.15))
         return (
             cf_weight * minmax(cf_scores)
+            + two_tower_weight * minmax(two_tower_scores)
             + content_weight * minmax(content_scores)
             + popularity_weight * minmax(popularity_scores)
         ).astype(np.float32)
@@ -366,11 +414,31 @@ class HybridArtifactRecommender:
         text = (model_name or "hybrid").strip().lower()
         if "lightgcn" in text:
             return "lightgcn"
+        if "ranker" in text or "strong" in text or "lightgbm" in text:
+            return "strong"
+        if "two" in text and "tower" in text:
+            return "two_tower"
         if "content" in text or "tfidf" in text or "sbert" in text:
             return "content"
         if "popular" in text:
             return "popularity"
         return "hybrid"
+
+    def _load_strong_ranker(self) -> None:
+        config = self.bundle.hybrid_config or {}
+        ranker_path = config.get("ranker_path")
+        if not self.artifacts_dir or not ranker_path:
+            return
+        path = self.artifacts_dir / str(ranker_path)
+        if not path.exists():
+            self.strong_ranker_error = f"{path.name} not found"
+            return
+        try:
+            import joblib
+
+            self.strong_ranker = joblib.load(path)
+        except Exception as exc:
+            self.strong_ranker_error = str(exc)
 
     def _similarity_explanations(self, source_idx: int, item_idx: int) -> list[str]:
         overlap = self._genre_overlap(source_idx, item_idx)
@@ -427,4 +495,3 @@ class HybridArtifactRecommender:
         if isinstance(value, np.generic):
             return value.item()
         return value
-

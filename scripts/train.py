@@ -6,12 +6,14 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
 
 from recommender.config import PROJECT_ROOT
 from recommender.data.movielens import (
+    build_sparse_interaction_matrix,
     build_user_item_sets,
     filter_catalog_to_items,
     prepare_interactions,
@@ -19,6 +21,7 @@ from recommender.data.movielens import (
 )
 from recommender.eval.metrics import evaluate_score_fn, minmax
 from recommender.inference.artifacts import save_artifact_bundle
+from recommender.models.learned_two_tower import LearnedTwoTowerRecommender
 from recommender.models.svd import evaluate_svd_rmse, fit_svd_baseline
 from recommender.models.two_tower import build_user_profiles, encode_item_texts
 
@@ -33,11 +36,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--content-backend", choices=["sbert", "tfidf", "auto"], default="sbert")
     parser.add_argument("--sbert-model", default="sentence-transformers/all-mpnet-base-v2")
     parser.add_argument("--train-lightgcn", action="store_true")
+    parser.add_argument("--train-two-tower", action="store_true", help="Train learned user/item two-tower on content embeddings")
     parser.add_argument("--lightgcn-dim", type=int, default=64)
     parser.add_argument("--lightgcn-layers", type=int, default=3)
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--batch-size", type=int, default=4096)
     parser.add_argument("--device", default="cpu")
+    parser.add_argument("--hybrid-grid-step", type=float, default=0.25)
     parser.add_argument(
         "--no-store-train-user-items",
         action="store_true",
@@ -97,24 +102,57 @@ def train_lightgcn_if_requested(args: argparse.Namespace, prepared, train_user_i
     )
 
 
+def train_two_tower_if_requested(
+    args: argparse.Namespace,
+    prepared,
+    train_user_items: dict[int, set[int]],
+    content_embeddings: np.ndarray,
+):
+    if not args.train_two_tower:
+        return None, None, {"enabled": False, "reason": "not requested"}
+    dataset = SimpleNamespace(
+        train=prepared.train,
+        train_user_items=train_user_items,
+        num_users=prepared.num_users,
+        num_items=prepared.num_items,
+        content_embeddings=content_embeddings,
+    )
+    try:
+        model = LearnedTwoTowerRecommender(
+            embedding_dim=args.lightgcn_dim,
+            epochs=args.epochs,
+            batch_size=args.batch_size,
+            device=args.device,
+            seed=42,
+        ).fit(dataset)
+    except Exception as exc:
+        return None, None, {"enabled": False, "reason": str(exc)}
+    return model.user_embeddings_, model.item_embeddings_, {"enabled": True, **model.metadata}
+
+
 def score_factory(
     user_profiles: np.ndarray,
     content_embeddings: np.ndarray,
     popularity: np.ndarray,
     lightgcn_user_embeddings: np.ndarray | None,
     lightgcn_item_embeddings: np.ndarray | None,
-    cf_weight: float,
-    content_weight: float,
-    popularity_weight: float,
+    two_tower_user_embeddings: np.ndarray | None,
+    two_tower_item_embeddings: np.ndarray | None,
+    weights: dict[str, float],
 ):
     def score_fn(batch_users: np.ndarray) -> np.ndarray:
         content = user_profiles[batch_users] @ content_embeddings.T
-        scores = content_weight * minmax(content, axis=1)
+        scores = weights.get("content_weight", 0.0) * minmax(content, axis=1)
         pop = np.broadcast_to(popularity[None, :], content.shape)
-        scores = scores + popularity_weight * pop
+        scores = scores + weights.get("popularity_weight", 0.0) * pop
+        cf_weight = weights.get("cf_weight", 0.0)
         if lightgcn_user_embeddings is not None and lightgcn_item_embeddings is not None and cf_weight:
             cf = lightgcn_user_embeddings[batch_users] @ lightgcn_item_embeddings.T
             scores = scores + cf_weight * minmax(cf, axis=1)
+        two_tower_weight = weights.get("two_tower_weight", 0.0)
+        if two_tower_user_embeddings is not None and two_tower_item_embeddings is not None and two_tower_weight:
+            two_tower = two_tower_user_embeddings[batch_users] @ two_tower_item_embeddings.T
+            scores = scores + two_tower_weight * minmax(two_tower, axis=1)
         return scores.astype(np.float32)
 
     return score_fn
@@ -128,26 +166,36 @@ def tune_weights(
     popularity: np.ndarray,
     lightgcn_user_embeddings: np.ndarray | None,
     lightgcn_item_embeddings: np.ndarray | None,
+    two_tower_user_embeddings: np.ndarray | None,
+    two_tower_item_embeddings: np.ndarray | None,
     train_user_items: dict[int, set[int]],
     val_user_items: dict[int, set[int]],
     k: int,
+    grid_step: float,
 ) -> tuple[dict[str, float], dict[str, float]]:
+    active_weights = ["content_weight", "popularity_weight"]
+    if lightgcn_user_embeddings is not None and lightgcn_item_embeddings is not None:
+        active_weights.insert(0, "cf_weight")
+    if two_tower_user_embeddings is not None and two_tower_item_embeddings is not None:
+        insert_at = 1 if "cf_weight" in active_weights else 0
+        active_weights.insert(insert_at, "two_tower_weight")
+
+    def as_weight_dict(values: np.ndarray) -> dict[str, float]:
+        weights = {"cf_weight": 0.0, "two_tower_weight": 0.0, "content_weight": 0.0, "popularity_weight": 0.0}
+        for name, value in zip(active_weights, values, strict=False):
+            weights[name] = float(value)
+        return weights
+
     if not val_user_items:
-        weights = {"cf_weight": 0.0, "content_weight": 0.85, "popularity_weight": 0.15}
+        weights = as_weight_dict(np.ones(len(active_weights), dtype=np.float32) / max(1, len(active_weights)))
         return weights, {}
 
-    has_cf = lightgcn_user_embeddings is not None and lightgcn_item_embeddings is not None
-    candidates = (
-        [(cf, content, max(0.0, 1.0 - cf - content)) for cf in [0.0, 0.25, 0.5, 0.75] for content in [0.25, 0.5, 0.75]]
-        if has_cf
-        else [(0.0, content, 1.0 - content) for content in [0.5, 0.7, 0.85, 0.95]]
-    )
+    candidates = _weight_grid(len(active_weights), grid_step)
     best_weights: dict[str, float] | None = None
     best_metrics: dict[str, float] = {}
     best_ndcg = -1.0
-    for cf_weight, content_weight, popularity_weight in candidates:
-        if popularity_weight < 0:
-            continue
+    for candidate in candidates:
+        weights = as_weight_dict(candidate)
         metrics = evaluate_score_fn(
             num_users,
             num_items,
@@ -157,9 +205,9 @@ def tune_weights(
                 popularity,
                 lightgcn_user_embeddings,
                 lightgcn_item_embeddings,
-                cf_weight,
-                content_weight,
-                popularity_weight,
+                two_tower_user_embeddings,
+                two_tower_item_embeddings,
+                weights,
             ),
             train_user_items,
             val_user_items,
@@ -169,12 +217,25 @@ def tune_weights(
         if ndcg > best_ndcg:
             best_ndcg = ndcg
             best_metrics = metrics
-            best_weights = {
-                "cf_weight": float(cf_weight),
-                "content_weight": float(content_weight),
-                "popularity_weight": float(popularity_weight),
-            }
-    return best_weights or {"cf_weight": 0.0, "content_weight": 0.85, "popularity_weight": 0.15}, best_metrics
+            best_weights = weights
+    return best_weights or as_weight_dict(np.ones(len(active_weights), dtype=np.float32) / max(1, len(active_weights))), best_metrics
+
+
+def _weight_grid(component_count: int, step: float) -> list[np.ndarray]:
+    if component_count <= 1:
+        return [np.ones(1, dtype=np.float32)]
+    steps = max(1, int(round(1.0 / max(step, 1e-6))))
+    candidates: list[np.ndarray] = []
+
+    def build(prefix: list[int], remaining: int, slots: int) -> None:
+        if slots == 1:
+            candidates.append(np.asarray([*prefix, remaining], dtype=np.float32) / steps)
+            return
+        for value in range(remaining + 1):
+            build([*prefix, value], remaining - value, slots - 1)
+
+    build([], steps, component_count)
+    return candidates
 
 
 def main() -> None:
@@ -195,6 +256,7 @@ def main() -> None:
     train_user_items = build_user_item_sets(prepared.train)
     val_user_items = build_user_item_sets(prepared.val)
     test_user_items = build_user_item_sets(prepared.test)
+    train_matrix = build_sparse_interaction_matrix(prepared.train, prepared.num_users, prepared.num_items)
 
     try:
         svd_user_factors, svd_item_factors, _ = fit_svd_baseline(prepared.train, prepared.num_users, prepared.num_items)
@@ -204,6 +266,7 @@ def main() -> None:
         print(f"SVD baseline skipped: {exc}")
 
     lightgcn_user, lightgcn_item, lightgcn_info = train_lightgcn_if_requested(args, prepared, train_user_items)
+    two_tower_user, two_tower_item, two_tower_info = train_two_tower_if_requested(args, prepared, train_user_items, content_embeddings)
     weights, val_metrics = tune_weights(
         prepared.num_users,
         prepared.num_items,
@@ -212,9 +275,12 @@ def main() -> None:
         popularity,
         lightgcn_user,
         lightgcn_item,
+        two_tower_user,
+        two_tower_item,
         train_user_items,
         val_user_items,
         args.k,
+        args.hybrid_grid_step,
     )
     test_metrics = evaluate_score_fn(
         prepared.num_users,
@@ -225,9 +291,9 @@ def main() -> None:
             popularity,
             lightgcn_user,
             lightgcn_item,
-            weights["cf_weight"],
-            weights["content_weight"],
-            weights["popularity_weight"],
+            two_tower_user,
+            two_tower_item,
+            weights,
         ),
         train_user_items,
         test_user_items,
@@ -239,13 +305,22 @@ def main() -> None:
         "test": test_metrics,
         "svd_rmse": svd_rmse,
         "lightgcn": lightgcn_info,
+        "two_tower": two_tower_info,
+        "split_stats": {
+            "train_interactions": int(len(prepared.train)),
+            "val_interactions": int(len(prepared.val)),
+            "test_interactions": int(len(prepared.test)),
+            "train_items_nonzero": int(train_matrix.getnnz(axis=0).astype(bool).sum()),
+        },
     }
     hybrid_config = {
         **weights,
+        "model_type": "hybrid_pdf_clean" if args.train_two_tower else "hybrid_weighted",
         "k": args.k,
         "min_rating": args.min_rating,
         "content_backend": args.content_backend,
         "sbert_model": args.sbert_model,
+        "hybrid_grid_step": args.hybrid_grid_step,
     }
     if not args.no_store_train_user_items:
         hybrid_config["train_user_items"] = {str(user): sorted(items) for user, items in train_user_items.items()}
@@ -262,6 +337,8 @@ def main() -> None:
         hybrid_config=hybrid_config,
         lightgcn_user_embeddings=lightgcn_user,
         lightgcn_item_embeddings=lightgcn_item,
+        two_tower_user_embeddings=two_tower_user,
+        two_tower_item_embeddings=two_tower_item,
     )
 
     args.artifacts_dir.mkdir(parents=True, exist_ok=True)

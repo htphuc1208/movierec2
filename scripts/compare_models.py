@@ -35,6 +35,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", type=Path, default=PROJECT_ROOT / "reports" / "comparison")
     parser.add_argument("--content-backend", choices=["tfidf", "sbert", "auto"], default="tfidf")
     parser.add_argument("--sbert-model", default="sentence-transformers/all-mpnet-base-v2")
+    parser.add_argument("--preset", choices=["none", "letterboxd-pdf-clean", "letterboxd-strong"], default="none")
     # core: chỉ chạy các model cơ bản như ItemPop, ItemKNN, SVD, MF
     # full: chạy tất cả model bao gồm cả EASE, SLIM, Ranker
     parser.add_argument("--models", choices=["core", "full"], default="core")
@@ -50,8 +51,39 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-ease-items", type=int, default=8000)
     parser.add_argument("--max-slim-items", type=int, default=1000)
     parser.add_argument("--max-ranker-samples", type=int, default=200_000)
+    parser.add_argument("--hybrid-grid-step", type=float, default=0.25)
+    parser.add_argument("--embedding-cache-dir", type=Path, default=PROJECT_ROOT / ".cache" / "recommender" / "content_embeddings")
+    parser.add_argument("--no-content-cache", action="store_true")
     parser.add_argument("--seed", type=int, default=42)
     return parser.parse_args()
+
+
+def apply_preset(args: argparse.Namespace) -> argparse.Namespace:
+    if args.preset == "letterboxd-pdf-clean":
+        if args.epochs == 5:
+            args.epochs = 100
+        if args.mf_dim == 64:
+            args.mf_dim = 128
+        if args.batch_size == 512:
+            args.batch_size = 8192
+        if args.hybrid_grid_step == 0.25:
+            args.hybrid_grid_step = 0.05
+    elif args.preset == "letterboxd-strong":
+        if args.models == "core":
+            args.models = "full"
+        if args.epochs == 5:
+            args.epochs = 100
+        if args.mf_dim == 64:
+            args.mf_dim = 128
+        if args.batch_size == 512:
+            args.batch_size = 8192
+        if args.max_ranker_samples == 200_000:
+            args.max_ranker_samples = 500_000
+        if args.max_slim_items == 1000:
+            args.max_slim_items = 3000
+        if args.hybrid_grid_step == 0.25:
+            args.hybrid_grid_step = 0.05
+    return args
 
 
 def selected_datasets(args: argparse.Namespace) -> list[tuple[str, Path, Path | None]]:
@@ -64,7 +96,7 @@ def selected_datasets(args: argparse.Namespace) -> list[tuple[str, Path, Path | 
 
 
 def main() -> None:
-    args = parse_args()
+    args = apply_preset(parse_args())
     config = ComparisonConfig(
         k=args.k,
         batch_size=args.batch_size,
@@ -80,6 +112,10 @@ def main() -> None:
         max_ease_items=args.max_ease_items,
         max_slim_items=args.max_slim_items,
         max_ranker_samples=args.max_ranker_samples,
+        preset=args.preset,
+        hybrid_grid_step=args.hybrid_grid_step,
+        embedding_cache_dir=args.embedding_cache_dir,
+        use_content_cache=not args.no_content_cache,
         seed=args.seed,
     )
     rows = run_comparison(selected_datasets(args), config)

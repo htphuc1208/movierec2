@@ -71,7 +71,9 @@ Huấn luyện đầy đủ trên Kaggle/GPU:
       --artifacts-dir artifacts \
       --content-backend sbert \
       --train-lightgcn \
+      --train-two-tower \
       --epochs 10 \
+      --hybrid-grid-step 0.05 \
       --device cuda
 
 Smoke test local nếu chưa cài sentence-transformers/torch:
@@ -90,6 +92,8 @@ Artifacts xuất ra:
 - artifacts/item_popularity.npy
 - artifacts/lightgcn_user_embeddings.npy nếu train LightGCN
 - artifacts/lightgcn_item_embeddings.npy nếu train LightGCN
+- artifacts/two_tower_user_embeddings.npy nếu train learned Two-Tower
+- artifacts/two_tower_item_embeddings.npy nếu train learned Two-Tower
 - artifacts/hybrid_config.json
 - artifacts/metrics.json
 
@@ -131,6 +135,41 @@ Full suite bật thêm SLIM ElasticNet, implicit ALS, LightFM WARP và NeuMF. V�
 Dùng SBERT khi có GPU hoặc chạy Kaggle:
 
     python3 scripts/compare_models.py --dataset both --content-backend sbert --device cuda
+
+Hai preset chính cho Letterboxd:
+
+    PYTHONPATH=src:. python scripts/compare_models.py \
+      --dataset letterboxd \
+      --letterboxd-dir data/processed/letterboxd \
+      --letterboxd-enriched-catalog data/processed/letterboxd/movie_catalog_enriched.parquet \
+      --content-backend sbert \
+      --sbert-model sentence-transformers/all-mpnet-base-v2 \
+      --preset letterboxd-pdf-clean \
+      --k 10 \
+      --device cuda \
+      --output-dir reports/comparison_letterboxd_pdf_clean
+
+    PYTHONPATH=src:. python scripts/compare_models.py \
+      --dataset letterboxd \
+      --letterboxd-dir data/processed/letterboxd \
+      --letterboxd-enriched-catalog data/processed/letterboxd/movie_catalog_enriched.parquet \
+      --content-backend sbert \
+      --sbert-model sentence-transformers/all-mpnet-base-v2 \
+      --preset letterboxd-strong \
+      --models full \
+      --k 10 \
+      --epochs 100 \
+      --mf-dim 128 \
+      --batch-size 8192 \
+      --device cuda \
+      --max-ease-items 5000 \
+      --max-slim-items 3000 \
+      --max-ranker-samples 500000 \
+      --output-dir reports/comparison_letterboxd_strong
+
+Preset letterboxd-pdf-clean giữ phương pháp sạch: LightGCN, learned Two-Tower từ SBERT/TF-IDF metadata, content-only và popularity, tune weighted sum bằng validation. Preset letterboxd-strong thêm candidate generators và learned ranker để tối ưu NDCG@10; báo cáo vẫn giữ từng baseline riêng để so sánh.
+
+Markdown report hiển thị metric 4 chữ số và có thêm slice metrics cho sparse users, warm users, long-tail items và head items.
 
 
 6. Chạy backend FastAPI
@@ -228,6 +267,11 @@ Nếu môi trường chưa cài torch hoặc fastapi, các test tương ứng s�
 -----------------------------
 - Lưu TMDB_API_KEY bằng Kaggle Secrets.
 - Dùng GPU accelerator nếu train LightGCN và SBERT trên tập lớn.
+- Với comparison mạnh, cài optional packages:
+
+    pip install -q -r requirements.txt
+    pip install -q -r requirements-optional.txt
+
 - Sau khi train, nén thư mục artifacts để tải về máy local:
 
     zip -r artifacts.zip artifacts
@@ -322,8 +366,38 @@ Khi đã có sentence-transformers/torch và môi trường mạnh hơn:
     PYTHONPATH=src:. python scripts/train.py \
       --raw-dir data/processed/letterboxd \
       --enriched-catalog data/processed/letterboxd/movie_catalog_enriched.parquet \
-      --artifacts-dir artifacts/letterboxd \
+      --artifacts-dir artifacts/letterboxd_pdf_clean \
       --content-backend sbert \
       --train-lightgcn \
-      --epochs 10 \
+      --train-two-tower \
+      --lightgcn-dim 128 \
+      --lightgcn-layers 3 \
+      --epochs 100 \
+      --batch-size 8192 \
+      --device cuda \
+      --hybrid-grid-step 0.05 \
       --min-rating 4.0
+
+Export artifact strongest ranker cho Letterboxd:
+
+    PYTHONPATH=src:. python scripts/train_strong_hybrid.py \
+      --dataset letterboxd \
+      --raw-dir data/processed/letterboxd \
+      --enriched-catalog data/processed/letterboxd/movie_catalog_enriched.parquet \
+      --artifacts-dir artifacts/letterboxd_strong \
+      --content-backend sbert \
+      --sbert-model sentence-transformers/all-mpnet-base-v2 \
+      --ranker lightgbm \
+      --lightgcn-dim 128 \
+      --lightgcn-layers 3 \
+      --lightgcn-epochs 100 \
+      --batch-size 8192 \
+      --device cuda \
+      --min-rating 4.0
+
+Strong artifact thêm:
+- ranker.joblib nếu joblib có thể serialize ranker.
+- component_score_config.json.
+- two_tower_user_embeddings.npy và two_tower_item_embeddings.npy nếu learned Two-Tower train thành công.
+
+API sẽ tự dùng ranker nếu hybrid_config.json có model_type strong_ranker và ranker.joblib load được. Nếu thiếu lightgbm/joblib hoặc file ranker, API fallback về hybrid scores từ LightGCN, Two-Tower, content và popularity.

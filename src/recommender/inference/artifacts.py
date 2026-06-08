@@ -23,6 +23,8 @@ class ArtifactBundle:
     hybrid_config: dict[str, Any]
     lightgcn_user_embeddings: np.ndarray | None = None
     lightgcn_item_embeddings: np.ndarray | None = None
+    two_tower_user_embeddings: np.ndarray | None = None
+    two_tower_item_embeddings: np.ndarray | None = None
 
 
 def _write_json(path: Path, data: dict[str, Any]) -> None:
@@ -50,6 +52,8 @@ def save_artifact_bundle(
     hybrid_config: dict[str, Any] | None = None,
     lightgcn_user_embeddings: np.ndarray | None = None,
     lightgcn_item_embeddings: np.ndarray | None = None,
+    two_tower_user_embeddings: np.ndarray | None = None,
+    two_tower_item_embeddings: np.ndarray | None = None,
 ) -> None:
     artifacts_dir = Path(artifacts_dir)
     artifacts_dir.mkdir(parents=True, exist_ok=True)
@@ -64,6 +68,9 @@ def save_artifact_bundle(
     if lightgcn_user_embeddings is not None and lightgcn_item_embeddings is not None:
         np.save(artifacts_dir / "lightgcn_user_embeddings.npy", lightgcn_user_embeddings.astype(np.float32))
         np.save(artifacts_dir / "lightgcn_item_embeddings.npy", lightgcn_item_embeddings.astype(np.float32))
+    if two_tower_user_embeddings is not None and two_tower_item_embeddings is not None:
+        np.save(artifacts_dir / "two_tower_user_embeddings.npy", two_tower_user_embeddings.astype(np.float32))
+        np.save(artifacts_dir / "two_tower_item_embeddings.npy", two_tower_item_embeddings.astype(np.float32))
 
 
 def artifact_status(artifacts_dir: str | Path) -> dict[str, Any]:
@@ -90,6 +97,8 @@ def load_artifact_bundle(artifacts_dir: str | Path) -> ArtifactBundle:
 
     lightgcn_user_path = artifacts_dir / "lightgcn_user_embeddings.npy"
     lightgcn_item_path = artifacts_dir / "lightgcn_item_embeddings.npy"
+    two_tower_user_path = artifacts_dir / "two_tower_user_embeddings.npy"
+    two_tower_item_path = artifacts_dir / "two_tower_item_embeddings.npy"
     return ArtifactBundle(
         catalog=pd.read_parquet(artifacts_dir / "movie_catalog.parquet"),
         user_mapping={int(k): int(v) for k, v in _read_json(artifacts_dir / "user_mapping.json").items()},
@@ -101,4 +110,6 @@ def load_artifact_bundle(artifacts_dir: str | Path) -> ArtifactBundle:
         hybrid_config=_read_json(artifacts_dir / "hybrid_config.json"),
         lightgcn_user_embeddings=np.load(lightgcn_user_path) if lightgcn_user_path.exists() else None,
         lightgcn_item_embeddings=np.load(lightgcn_item_path) if lightgcn_item_path.exists() else None,
+        two_tower_user_embeddings=np.load(two_tower_user_path) if two_tower_user_path.exists() else None,
+        two_tower_item_embeddings=np.load(two_tower_item_path) if two_tower_item_path.exists() else None,
     )

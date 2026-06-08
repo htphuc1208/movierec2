@@ -60,6 +60,8 @@ def test_compare_models_script_smoke(tmp_path: Path) -> None:
             "tfidf",
             "--models",
             "core",
+            "--preset",
+            "letterboxd-pdf-clean",
             "--k",
             "2",
             "--epochs",
@@ -72,6 +74,9 @@ def test_compare_models_script_smoke(tmp_path: Path) -> None:
             "100",
             "--max-ranker-samples",
             "100",
+            "--hybrid-grid-step",
+            "0.5",
+            "--no-content-cache",
         ],
         cwd=Path.cwd(),
         env=env,
@@ -86,4 +91,4 @@ def test_compare_models_script_smoke(tmp_path: Path) -> None:
     rows = json.loads((output_dir / "comparison_results.json").read_text(encoding="utf-8"))
     ok_models = {row["model"] for row in rows if row["status"] == "ok"}
     assert {"popularity_only", "item_knn_cosine", "user_knn_cosine", "tfidf_only"}.issubset(ok_models)
-
+    assert "hybrid_pdf_clean" in {row["model"] for row in rows}
