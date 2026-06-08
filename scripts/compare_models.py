@@ -18,6 +18,7 @@ from recommender.experiments.comparison import ComparisonConfig, run_comparison,
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Compare recommender models on MovieLens and/or Letterboxd splits")
+    # dataset options
     parser.add_argument("--dataset", choices=["movielens", "letterboxd", "both"], default="both")
     parser.add_argument("--movielens-dir", type=Path, default=PROJECT_ROOT / "data" / "raw" / "ml-latest-small")
     parser.add_argument(
@@ -34,6 +35,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", type=Path, default=PROJECT_ROOT / "reports" / "comparison")
     parser.add_argument("--content-backend", choices=["tfidf", "sbert", "auto"], default="tfidf")
     parser.add_argument("--sbert-model", default="sentence-transformers/all-mpnet-base-v2")
+    # core: chỉ chạy các model cơ bản như ItemPop, ItemKNN, SVD, MF
+    # full: chạy tất cả model bao gồm cả EASE, SLIM, Ranker
     parser.add_argument("--models", choices=["core", "full"], default="core")
     parser.add_argument("--min-rating", type=float, default=4.0)
     parser.add_argument("--k", type=int, default=10)
@@ -43,6 +46,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--knn-top-k", type=int, default=100)
     parser.add_argument("--svd-components", type=int, default=64)
     parser.add_argument("--mf-dim", type=int, default=64)
+    # giới hạn số lượng item được sử dụng để huấn luyện EASE và SLIM để giảm thời gian chạy, đồng thời giới hạn số lượng mẫu được sử dụng để huấn luyện Ranker
     parser.add_argument("--max-ease-items", type=int, default=8000)
     parser.add_argument("--max-slim-items", type=int, default=1000)
     parser.add_argument("--max-ranker-samples", type=int, default=200_000)

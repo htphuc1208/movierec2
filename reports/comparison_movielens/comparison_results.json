@@ -1,0 +1,393 @@
+[
+  {
+    "dataset": "movielens",
+    "model": "random",
+    "status": "ok",
+    "metrics": {
+      "precision@10": 0.0013157894736842105,
+      "recall@10": 0.0018217945265209807,
+      "ndcg@10": 0.0030221533108549213,
+      "mrr": 0.008388157894736842
+    },
+    "seconds": 0.0347,
+    "metadata": {
+      "data_dir": "/home/phucht/movierec3/data/raw/ml-latest-small",
+      "enriched_catalog": "/home/phucht/movierec3/data/processed/movie_catalog_enriched.parquet",
+      "split_strategy": "timestamp_per_user",
+      "min_rating": 4.0,
+      "content_backend": "tfidf",
+      "seed": 42
+    },
+    "include_in_summary": true
+  },
+  {
+    "dataset": "movielens",
+    "model": "popularity_only",
+    "status": "ok",
+    "metrics": {
+      "precision@10": 0.019407894736842107,
+      "recall@10": 0.03972336937639256,
+      "ndcg@10": 0.0365087317560766,
+      "mrr": 0.06767374164578112
+    },
+    "seconds": 0.0239,
+    "metadata": {
+      "data_dir": "/home/phucht/movierec3/data/raw/ml-latest-small",
+      "enriched_catalog": "/home/phucht/movierec3/data/processed/movie_catalog_enriched.parquet",
+      "split_strategy": "timestamp_per_user",
+      "min_rating": 4.0,
+      "content_backend": "tfidf",
+      "nonzero_items": 5300
+    },
+    "include_in_summary": true
+  },
+  {
+    "dataset": "movielens",
+    "model": "item_knn_cosine",
+    "status": "ok",
+    "metrics": {
+      "precision@10": 0.0274671052631579,
+      "recall@10": 0.055353414859283905,
+      "ndcg@10": 0.04379170468236444,
+      "mrr": 0.07357847744360901
+    },
+    "seconds": 0.1998,
+    "metadata": {
+      "data_dir": "/home/phucht/movierec3/data/raw/ml-latest-small",
+      "enriched_catalog": "/home/phucht/movierec3/data/processed/movie_catalog_enriched.parquet",
+      "split_strategy": "timestamp_per_user",
+      "min_rating": 4.0,
+      "content_backend": "tfidf",
+      "top_k": 100,
+      "similarity_nnz": 504224
+    },
+    "include_in_summary": true
+  },
+  {
+    "dataset": "movielens",
+    "model": "user_knn_cosine",
+    "status": "ok",
+    "metrics": {
+      "precision@10": 0.02549342105263158,
+      "recall@10": 0.05537307944327814,
+      "ndcg@10": 0.04352505434879188,
+      "mrr": 0.07363264933166248
+    },
+    "seconds": 0.0809,
+    "metadata": {
+      "data_dir": "/home/phucht/movierec3/data/raw/ml-latest-small",
+      "enriched_catalog": "/home/phucht/movierec3/data/processed/movie_catalog_enriched.parquet",
+      "split_strategy": "timestamp_per_user",
+      "min_rating": 4.0,
+      "content_backend": "tfidf",
+      "top_k": 100,
+      "similarity_nnz": 60156
+    },
+    "include_in_summary": true
+  },
+  {
+    "dataset": "movielens",
+    "model": "svd_ranking",
+    "status": "ok",
+    "metrics": {
+      "precision@10": 0.024999999999999998,
+      "recall@10": 0.06040341281937424,
+      "ndcg@10": 0.04544933509793764,
+      "mrr": 0.07268627297410192
+    },
+    "seconds": 0.1688,
+    "metadata": {
+      "data_dir": "/home/phucht/movierec3/data/raw/ml-latest-small",
+      "enriched_catalog": "/home/phucht/movierec3/data/processed/movie_catalog_enriched.parquet",
+      "split_strategy": "timestamp_per_user",
+      "min_rating": 4.0,
+      "content_backend": "tfidf",
+      "n_components": 64,
+      "explained_variance": 0.551169216632843
+    },
+    "include_in_summary": true
+  },
+  {
+    "dataset": "movielens",
+    "model": "ease",
+    "status": "ok",
+    "metrics": {
+      "precision@10": 0.02993421052631579,
+      "recall@10": 0.06117230804752896,
+      "ndcg@10": 0.05063089913235055,
+      "mrr": 0.08979610484544694
+    },
+    "seconds": 11.5356,
+    "metadata": {
+      "data_dir": "/home/phucht/movierec3/data/raw/ml-latest-small",
+      "enriched_catalog": "/home/phucht/movierec3/data/processed/movie_catalog_enriched.parquet",
+      "split_strategy": "timestamp_per_user",
+      "min_rating": 4.0,
+      "content_backend": "tfidf",
+      "l2": 250.0
+    },
+    "include_in_summary": true
+  },
+  {
+    "dataset": "movielens",
+    "model": "tfidf_only",
+    "status": "ok",
+    "metrics": {
+      "precision@10": 0.00625,
+      "recall@10": 0.017071659982776786,
+      "ndcg@10": 0.011299801847710365,
+      "mrr": 0.018449770258980785
+    },
+    "seconds": 0.1346,
+    "metadata": {
+      "data_dir": "/home/phucht/movierec3/data/raw/ml-latest-small",
+      "enriched_catalog": "/home/phucht/movierec3/data/processed/movie_catalog_enriched.parquet",
+      "split_strategy": "timestamp_per_user",
+      "min_rating": 4.0,
+      "content_backend": "tfidf",
+      "embedding_attr": "content_embeddings"
+    },
+    "include_in_summary": true
+  },
+  {
+    "dataset": "movielens",
+    "model": "bpr_mf",
+    "status": "ok",
+    "metrics": {
+      "precision@10": 0.0013157894736842105,
+      "recall@10": 0.003265735146813522,
+      "ndcg@10": 0.0024796776279086283,
+      "mrr": 0.0041346856725146194
+    },
+    "seconds": 19.4063,
+    "metadata": {
+      "data_dir": "/home/phucht/movierec3/data/raw/ml-latest-small",
+      "enriched_catalog": "/home/phucht/movierec3/data/processed/movie_catalog_enriched.parquet",
+      "split_strategy": "timestamp_per_user",
+      "min_rating": 4.0,
+      "content_backend": "tfidf",
+      "embedding_dim": 64,
+      "epochs": 10,
+      "losses": [
+        0.6928564429283142,
+        0.6874539852142334,
+        0.6822249472141266,
+        0.6756556749343872,
+        0.6702993512153625,
+        0.664014744758606,
+        0.6586974382400512,
+        0.65162433385849,
+        0.6445367276668549,
+        0.636129367351532
+      ]
+    },
+    "include_in_summary": true
+  },
+  {
+    "dataset": "movielens",
+    "model": "lightgcn_only",
+    "status": "ok",
+    "metrics": {
+      "precision@10": 0.01842105263157895,
+      "recall@10": 0.03901728384542313,
+      "ndcg@10": 0.035937367225426564,
+      "mrr": 0.06672867063492065
+    },
+    "seconds": 17.4087,
+    "metadata": {
+      "data_dir": "/home/phucht/movierec3/data/raw/ml-latest-small",
+      "enriched_catalog": "/home/phucht/movierec3/data/processed/movie_catalog_enriched.parquet",
+      "split_strategy": "timestamp_per_user",
+      "min_rating": 4.0,
+      "content_backend": "tfidf",
+      "embedding_dim": 64,
+      "layers": 3,
+      "epochs": 10,
+      "losses": [
+        0.6903131008148193,
+        0.6882294654846192,
+        0.6838962018489838,
+        0.6753050804138183,
+        0.6609246373176575,
+        0.6387840449810028,
+        0.6092021346092225,
+        0.5730649173259735,
+        0.5319079458713531,
+        0.4932007879018784
+      ]
+    },
+    "include_in_summary": true
+  },
+  {
+    "dataset": "movielens",
+    "model": "learned_two_tower",
+    "status": "ok",
+    "metrics": {
+      "precision@10": 0.011677631578947368,
+      "recall@10": 0.026461827208630655,
+      "ndcg@10": 0.020438538582601244,
+      "mrr": 0.035562865497076025
+    },
+    "seconds": 14.4334,
+    "metadata": {
+      "data_dir": "/home/phucht/movierec3/data/raw/ml-latest-small",
+      "enriched_catalog": "/home/phucht/movierec3/data/processed/movie_catalog_enriched.parquet",
+      "split_strategy": "timestamp_per_user",
+      "min_rating": 4.0,
+      "content_backend": "tfidf",
+      "embedding_dim": 64,
+      "hidden_dim": 128,
+      "epochs": 10,
+      "embedding_attr": "content_embeddings",
+      "losses": [
+        0.6911930441856384,
+        0.6828509390354156,
+        0.6579332470893859,
+        0.6316813051700592,
+        0.6026401042938232,
+        0.5738311350345612,
+        0.5479544401168823,
+        0.5222514927387237,
+        0.5001993745565414,
+        0.47769618034362793
+      ]
+    },
+    "include_in_summary": true
+  },
+  {
+    "dataset": "movielens",
+    "model": "hybrid_weighted_no_popularity",
+    "status": "ok",
+    "metrics": {
+      "precision@10": 0.023519736842105263,
+      "recall@10": 0.054637882113590684,
+      "ndcg@10": 0.042590919377816006,
+      "mrr": 0.06980080409356725
+    },
+    "seconds": 2.8956,
+    "metadata": {
+      "data_dir": "/home/phucht/movierec3/data/raw/ml-latest-small",
+      "enriched_catalog": "/home/phucht/movierec3/data/processed/movie_catalog_enriched.parquet",
+      "split_strategy": "timestamp_per_user",
+      "min_rating": 4.0,
+      "content_backend": "tfidf",
+      "weights": [
+        0.25,
+        0.5,
+        0.25
+      ],
+      "tuned": true,
+      "validation_ndcg@10": 0.06121392992571787
+    },
+    "include_in_summary": true
+  },
+  {
+    "dataset": "movielens",
+    "model": "hybrid_weighted_full",
+    "status": "ok",
+    "metrics": {
+      "precision@10": 0.02006578947368421,
+      "recall@10": 0.04318392490618246,
+      "ndcg@10": 0.03767726701024239,
+      "mrr": 0.06884659565580618
+    },
+    "seconds": 0.341,
+    "metadata": {
+      "data_dir": "/home/phucht/movierec3/data/raw/ml-latest-small",
+      "enriched_catalog": "/home/phucht/movierec3/data/processed/movie_catalog_enriched.parquet",
+      "split_strategy": "timestamp_per_user",
+      "min_rating": 4.0,
+      "content_backend": "tfidf",
+      "weights": [
+        0.25,
+        0.25,
+        0.25,
+        0.25
+      ],
+      "tuned": true,
+      "validation_ndcg@10": 0.05410680977546669
+    },
+    "include_in_summary": true
+  },
+  {
+    "dataset": "movielens",
+    "model": "hybrid_ranker_no_popularity",
+    "status": "ok",
+    "metrics": {
+      "precision@10": 0.020394736842105264,
+      "recall@10": 0.04284527997114784,
+      "ndcg@10": 0.03538306061023986,
+      "mrr": 0.061465512740183796
+    },
+    "seconds": 5.2279,
+    "metadata": {
+      "data_dir": "/home/phucht/movierec3/data/raw/ml-latest-small",
+      "enriched_catalog": "/home/phucht/movierec3/data/processed/movie_catalog_enriched.parquet",
+      "split_strategy": "timestamp_per_user",
+      "min_rating": 4.0,
+      "content_backend": "tfidf",
+      "components": [
+        "lightgcn_only",
+        "learned_two_tower",
+        "tfidf_only"
+      ],
+      "include_popularity": false,
+      "train_samples": 116499
+    },
+    "include_in_summary": true
+  },
+  {
+    "dataset": "movielens",
+    "model": "hybrid_ranker_full",
+    "status": "ok",
+    "metrics": {
+      "precision@10": 0.020394736842105264,
+      "recall@10": 0.04392847385403518,
+      "ndcg@10": 0.036575107078342085,
+      "mrr": 0.06552122493734336
+    },
+    "seconds": 4.7219,
+    "metadata": {
+      "data_dir": "/home/phucht/movierec3/data/raw/ml-latest-small",
+      "enriched_catalog": "/home/phucht/movierec3/data/processed/movie_catalog_enriched.parquet",
+      "split_strategy": "timestamp_per_user",
+      "min_rating": 4.0,
+      "content_backend": "tfidf",
+      "components": [
+        "lightgcn_only",
+        "learned_two_tower",
+        "tfidf_only"
+      ],
+      "include_popularity": true,
+      "train_samples": 116499
+    },
+    "include_in_summary": true
+  },
+  {
+    "dataset": "movielens",
+    "model": "hybrid_no_tmdb",
+    "status": "ok",
+    "metrics": {
+      "precision@10": 0.01924342105263158,
+      "recall@10": 0.0463994354450955,
+      "ndcg@10": 0.03286713997922112,
+      "mrr": 0.05408181913116124
+    },
+    "seconds": 2.5188,
+    "metadata": {
+      "data_dir": "/home/phucht/movierec3/data/raw/ml-latest-small",
+      "enriched_catalog": "/home/phucht/movierec3/data/processed/movie_catalog_enriched.parquet",
+      "split_strategy": "timestamp_per_user",
+      "min_rating": 4.0,
+      "content_backend": "tfidf",
+      "weights": [
+        0.25,
+        0.5,
+        0.25
+      ],
+      "tuned": true,
+      "validation_ndcg@10": 0.05844438767237255
+    },
+    "include_in_summary": true
+  }
+]

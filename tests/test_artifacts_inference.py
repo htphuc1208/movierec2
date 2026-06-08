@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 
 from recommender.inference.artifacts import artifact_status, save_artifact_bundle
+from recommender.inference.ratings_store import SidecarRatingStore
 from recommender.inference.recommender import HybridArtifactRecommender
 
 
@@ -29,7 +30,7 @@ def make_bundle(tmp_path):
         user_profiles=user_profiles,
         item_popularity=np.array([0.1, 0.2, 0.3], dtype=np.float32),
         metrics={"test": {"ndcg@10": 1.0}},
-        hybrid_config={"content_weight": 0.9, "popularity_weight": 0.1, "cf_weight": 0.0},
+        hybrid_config={"content_weight": 0.9, "popularity_weight": 0.1, "cf_weight": 0.0, "train_user_items": {"0": [0]}},
     )
 
 
@@ -52,3 +53,19 @@ def test_search_and_session_context(tmp_path) -> None:
     assert recommender.search_movies("space", limit=5)
     results = recommender.recommend(top_k=1, session_context=["tmdb_100"])
     assert results[0]["movie_id"] == 11
+
+
+def test_catalog_helpers_and_rating_history(tmp_path) -> None:
+    make_bundle(tmp_path)
+    recommender = HybridArtifactRecommender.from_dir(tmp_path)
+    store = SidecarRatingStore(tmp_path / "runtime" / "ratings.csv")
+    store.append(user_id=1, movie_id=12, rating=4.5, timestamp=123)
+
+    assert recommender.users() == [1]
+    assert recommender.movie_detail(10)["title"] == "Space One"
+    similar = recommender.similar_movies(10, top_k=1)
+    assert similar[0]["movie_id"] == 11
+    assert recommender.recommend(user_id=1, top_k=1, model_name="LightGCN")
+    history = recommender.user_history(1, rating_store=store, top_k=5)
+    assert [movie["movie_id"] for movie in history] == [12, 10]
+    assert history[0]["user_rating"] == 4.5

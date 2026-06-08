@@ -142,12 +142,32 @@ Endpoints:
 - GET /health
 - GET /movies?query=toy&limit=20
 - POST /recommendations
+- POST /recommend là alias tương thích UI cũ
+- GET /users
+- GET /users/{user_id}/history
+- GET /movies/trending
+- GET /movies/top-rated
+- GET /movies/latest
+- GET /movies/genre/{genre}
+- GET /movies/{movie_id}
+- GET /movies/{movie_id}/similar
+- GET /model-info
+- POST /rate
+- GET /rate/{user_id}/{movie_id}
+
+Rating gửi từ UI/API được lưu vào sidecar CSV, mặc định:
+
+    artifacts/runtime/user_ratings.csv
+
+Có thể đổi bằng biến môi trường:
+
+    RATINGS_STORE_PATH=artifacts/runtime/user_ratings.csv
 
 Ví dụ request:
 
     curl -X POST http://localhost:8000/recommendations \
       -H "Content-Type: application/json" \
-      -d '{"user_id": 1, "top_k": 10, "session_context": []}'
+      -d '{"user_id": 1, "top_k": 10, "session_context": [], "model_name": "hybrid"}'
 
 Ví dụ session cold-start:
 

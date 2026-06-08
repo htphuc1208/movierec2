@@ -12,31 +12,22 @@ from sklearn.preprocessing import normalize
 
 from recommender.eval.metrics import minmax, top_k_from_scores
 from recommender.inference.artifacts import ArtifactBundle, load_artifact_bundle
+from recommender.inference.ratings_store import SidecarRatingStore
 
-# Artifact đã train : cataloag, mapping user/item, content_embeddings, user_profiles, item_popularity, metrics, hybrid_config, lightgcn_user_embeddings, lightgcn_item_embeddings
-      ↓
-# HybridArtifactRecommender
-#       ↓
-# recommend(user_id, top_k, session_context)
-#       ↓
-# trả về top phim nên gợi ý
 
 class HybridArtifactRecommender:
-    """Serve top-K recommendations from exported model artifacts."""
+    """Serve recommendations and catalog views from exported artifacts."""
 
     def __init__(self, bundle: ArtifactBundle) -> None:
         self.bundle = bundle
-        # xây dựng catalog với item_idx là chỉ số của phim trong catalog, 
-        # đồng thời xây dựng mapping từ tmdb_id sang item_idx để hỗ trợ tìm kiếm
         self.catalog = bundle.catalog.reset_index(drop=True).copy()
         self.catalog["item_idx"] = np.arange(len(self.catalog))
         self.item_mapping = bundle.item_mapping
         self.user_mapping = bundle.user_mapping
         self.index_to_movie_id = {idx: movie_id for movie_id, idx in self.item_mapping.items()}
         self.tmdb_to_item = self._build_tmdb_index(self.catalog)
+        self._title_to_item = {str(row.title).lower(): int(row.item_idx) for row in self.catalog.itertuples(index=False)}
 
-    # ham nay load artifact bundle tu thu muc 
-    # va tra ve instance HybridArtifactRecommender,
     @classmethod
     def from_dir(cls, artifacts_dir: str | Path) -> "HybridArtifactRecommender":
         return cls(load_artifact_bundle(artifacts_dir))
@@ -49,43 +40,244 @@ class HybridArtifactRecommender:
         for idx, value in enumerate(catalog["tmdb_id"].tolist()):
             if pd.isna(value):
                 continue
-            result[str(int(value))] = idx
-            result[f"tmdb_{int(value)}"] = idx
+            try:
+                tmdb_id = int(value)
+            except (TypeError, ValueError):
+                continue
+            result[str(tmdb_id)] = idx
+            result[f"tmdb_{tmdb_id}"] = idx
         return result
+
+    def users(self) -> list[int]:
+        return sorted(int(user_id) for user_id in self.user_mapping)
+
+    def model_info(self) -> dict:
+        metrics = self.bundle.metrics or {}
+        config = self.bundle.hybrid_config or {}
+        return {
+            "model_source": "artifact",
+            "model_name": "hybrid-artifact-lightgcn-content",
+            "user_count": len(self.user_mapping),
+            "movie_count": len(self.item_mapping),
+            "has_lightgcn": self.bundle.lightgcn_user_embeddings is not None and self.bundle.lightgcn_item_embeddings is not None,
+            "weights": {
+                "cf": float(config.get("cf_weight", 0.0)),
+                "content": float(config.get("content_weight", 0.0)),
+                "popularity": float(config.get("popularity_weight", 0.0)),
+            },
+            "content_backend": config.get("content_backend", ""),
+            "metrics": metrics,
+        }
 
     def search_movies(self, query: str = "", limit: int = 20) -> list[dict]:
         query = query.strip()
         catalog = self.catalog
         if query:
-            # tim khong phan biet hoa thuong 
             pattern = re.escape(query)
             mask = catalog["title"].astype(str).str.contains(pattern, case=False, na=False, regex=True)
             catalog = catalog.loc[mask]
+        return [self._movie_payload(int(row.item_idx)) for row in catalog.head(limit).itertuples(index=False)]
+
+    def movie_detail(self, movie_id: int | str) -> dict | None:
+        item_idx = self._movie_id_to_item_idx(movie_id)
+        if item_idx is None:
+            return None
+        return self._movie_payload(item_idx, include_detail=True)
+
+    def similar_movies(self, movie_id: int | str, top_k: int = 15) -> list[dict]:
+        item_idx = self._movie_id_to_item_idx(movie_id)
+        if item_idx is None:
+            return []
+        embeddings = normalize(self.bundle.content_embeddings.astype(np.float32))
+        scores = embeddings[item_idx] @ embeddings.T
+        scores[item_idx] = -np.inf
+        top_indices = top_k_from_scores(scores, max(1, min(int(top_k), 100)))
         return [
-            self._movie_payload(int(row.item_idx), score=None, explanation_tags=[])
-            for row in catalog.head(limit).itertuples(index=False)
+            self._movie_payload(idx, score=float(scores[idx]), explanation_tags=self._similarity_explanations(item_idx, idx))
+            for idx in top_indices
+            if np.isfinite(scores[idx])
         ]
-    # context to item indices: chuyển đổi các giá trị trong session_context thành chỉ số của phim trong catalog, dựa trên tmdb_id, movieId hoặc title
+
+    def trending_movies(self, top_k: int = 15) -> list[dict]:
+        return self._rank_catalog(
+            top_k,
+            key=lambda item_idx: (
+                self._numeric(item_idx, "vote_count"),
+                self._numeric(item_idx, "popularity"),
+                self._numeric(item_idx, "vote_average"),
+            ),
+        )
+
+    def top_rated_movies(self, top_k: int = 15) -> list[dict]:
+        return self._rank_catalog(
+            top_k,
+            key=lambda item_idx: (
+                self._numeric(item_idx, "vote_average"),
+                self._numeric(item_idx, "vote_count"),
+                self._numeric(item_idx, "popularity"),
+            ),
+        )
+
+    def latest_movies(self, top_k: int = 15) -> list[dict]:
+        return self._rank_catalog(
+            top_k,
+            key=lambda item_idx: (
+                self._release_year(item_idx),
+                self._numeric(item_idx, "popularity"),
+                self._numeric(item_idx, "vote_count"),
+            ),
+        )
+
+    def genre_movies(self, genre: str, top_k: int = 15) -> list[dict]:
+        needle = genre.strip().lower()
+        if not needle:
+            return []
+        candidates = []
+        for row in self.catalog.itertuples(index=False):
+            text = f"{getattr(row, 'genres', '')}|{getattr(row, 'tmdb_genres', '')}".lower()
+            if needle in text:
+                candidates.append(int(row.item_idx))
+        candidates.sort(
+            key=lambda item_idx: (
+                self._numeric(item_idx, "vote_average"),
+                self._numeric(item_idx, "vote_count"),
+                self._numeric(item_idx, "popularity"),
+            ),
+            reverse=True,
+        )
+        return [self._movie_payload(idx) for idx in candidates[: max(1, min(int(top_k), 100))]]
+
+    def user_history(self, user_id: int, rating_store: SidecarRatingStore | None = None, top_k: int = 15) -> list[dict]:
+        top_k = max(1, min(int(top_k), 100))
+        seen: set[int] = set()
+        results: list[dict] = []
+
+        if rating_store is not None:
+            for rating in rating_store.ratings_for_user(int(user_id)):
+                item_idx = self._movie_id_to_item_idx(rating["movie_id"])
+                if item_idx is None:
+                    continue
+                payload = self._movie_payload(item_idx)
+                payload["user_rating"] = float(rating["rating"])
+                payload["rating_timestamp"] = int(rating["timestamp"])
+                payload["history_source"] = "sidecar"
+                results.append(payload)
+                seen.add(item_idx)
+                if len(results) >= top_k:
+                    return results
+
+        user_idx = self.user_mapping.get(int(user_id))
+        if user_idx is None:
+            return results
+        train_items = self.bundle.hybrid_config.get("train_user_items", {}).get(str(user_idx), [])
+        train_item_indices = [int(item) for item in train_items if 0 <= int(item) < len(self.catalog) and int(item) not in seen]
+        train_item_indices.sort(key=lambda item_idx: float(self.bundle.item_popularity[item_idx]), reverse=True)
+        for item_idx in train_item_indices:
+            payload = self._movie_payload(item_idx)
+            payload["user_rating"] = None
+            payload["history_source"] = "train"
+            results.append(payload)
+            if len(results) >= top_k:
+                break
+        return results
+
+    def recommend(
+        self,
+        user_id: int | None = None,
+        top_k: int = 10,
+        session_context: Iterable[str | int] | None = None,
+        exclude_seen: bool = True,
+        model_name: str = "hybrid",
+    ) -> list[dict]:
+        top_k = max(1, min(int(top_k), 100))
+        session_item_indices = self._context_to_item_indices(session_context)
+        content_scores = self._content_scores(user_id, session_item_indices)
+        popularity_scores = self.bundle.item_popularity.astype(np.float32)
+        cf_scores, has_cf = self._cf_scores(user_id)
+        mode = self._normalise_model_name(model_name)
+
+        if mode == "lightgcn" and has_cf:
+            scores = minmax(cf_scores)
+        elif mode == "content":
+            scores = minmax(content_scores)
+        elif mode == "popularity":
+            scores = minmax(popularity_scores)
+        else:
+            scores = self._hybrid_scores(cf_scores, content_scores, popularity_scores, has_cf)
+
+        blocked = set(session_item_indices)
+        if exclude_seen and user_id is not None and int(user_id) in self.user_mapping:
+            user_idx = self.user_mapping[int(user_id)]
+            watched = self.bundle.hybrid_config.get("train_user_items", {}).get(str(user_idx), [])
+            blocked.update(int(item) for item in watched)
+        if blocked:
+            scores[list(blocked)] = -np.inf
+
+        top_indices = top_k_from_scores(scores, top_k)
+        return [
+            self._movie_payload(
+                idx,
+                score=float(scores[idx]),
+                explanation_tags=self._explanations(idx, session_item_indices, has_cf=(mode == "lightgcn" and has_cf) or has_cf),
+                match_score=self._match_score(scores[idx]),
+            )
+            for idx in top_indices
+            if np.isfinite(scores[idx])
+        ]
+
+    def _content_scores(self, user_id: int | None, session_item_indices: list[int]) -> np.ndarray:
+        profile = self._user_profile(user_id, session_item_indices)
+        return (profile @ self.bundle.content_embeddings.T).astype(np.float32)
+
+    def _cf_scores(self, user_id: int | None) -> tuple[np.ndarray, bool]:
+        scores = np.zeros(len(self.catalog), dtype=np.float32)
+        has_cf = (
+            user_id is not None
+            and int(user_id) in self.user_mapping
+            and self.bundle.lightgcn_user_embeddings is not None
+            and self.bundle.lightgcn_item_embeddings is not None
+        )
+        if has_cf:
+            user_idx = self.user_mapping[int(user_id)]
+            scores = (self.bundle.lightgcn_user_embeddings[user_idx] @ self.bundle.lightgcn_item_embeddings.T).astype(np.float32)
+        return scores, has_cf
+
+    def _hybrid_scores(
+        self,
+        cf_scores: np.ndarray,
+        content_scores: np.ndarray,
+        popularity_scores: np.ndarray,
+        has_cf: bool,
+    ) -> np.ndarray:
+        weights = self.bundle.hybrid_config or {}
+        cf_weight = float(weights.get("cf_weight", 0.45 if has_cf else 0.0))
+        content_weight = float(weights.get("content_weight", 0.45 if has_cf else 0.85))
+        popularity_weight = float(weights.get("popularity_weight", 0.10 if has_cf else 0.15))
+        return (
+            cf_weight * minmax(cf_scores)
+            + content_weight * minmax(content_scores)
+            + popularity_weight * minmax(popularity_scores)
+        ).astype(np.float32)
+
     def _context_to_item_indices(self, session_context: Iterable[str | int] | None) -> list[int]:
         if not session_context:
             return []
         indices: list[int] = []
-        title_to_idx = {str(row.title).lower(): int(row.item_idx) for row in self.catalog.itertuples(index=False)}
         for value in session_context:
             text = str(value).strip()
             if text in self.tmdb_to_item:
                 indices.append(self.tmdb_to_item[text])
                 continue
-            if text.startswith("ml_"):
-                text = text[3:]
+            if text.startswith(("ml_", "movie_")):
+                text = text.split("_", 1)[1]
             if text.isdigit() and int(text) in self.item_mapping:
                 indices.append(self.item_mapping[int(text)])
                 continue
-            if text.lower() in title_to_idx:
-                indices.append(title_to_idx[text.lower()])
+            title_idx = self._title_to_item.get(text.lower())
+            if title_idx is not None:
+                indices.append(title_idx)
         return sorted(set(indices))
 
-    # xay dung user profile dua tren user_id va session_item_indices, neu co user_id thi lay user profile tu bundle, neu co session_item_indices thi lay content embedding cua cac item trong session va trung binh chung voi nhau, neu khong co ca 2 thi lay trung binh co trong content_embeddings, sau do chuan hoa va tra ve
     def _user_profile(self, user_id: int | None, session_item_indices: list[int]) -> np.ndarray:
         profiles = []
         if user_id is not None and int(user_id) in self.user_mapping:
@@ -102,63 +294,89 @@ class HybridArtifactRecommender:
         profile = np.mean(np.vstack(profiles), axis=0, keepdims=True)
         return normalize(profile).astype(np.float32)[0]
 
-    def recommend(
+    def _movie_payload(
         self,
-        user_id: int | None = None,
-        top_k: int = 10,
-        session_context: Iterable[str | int] | None = None,
-    ) -> list[dict]:
-        top_k = max(1, min(int(top_k), 100))
-        session_item_indices = self._context_to_item_indices(session_context)
-        profile = self._user_profile(user_id, session_item_indices)
-
-        # tính điểm content-based bằng cách nhân user profile với content embeddings của tất cả item
-        content_scores = profile @ self.bundle.content_embeddings.T
-        
-        popularity_scores = self.bundle.item_popularity.astype(np.float32)
-        cf_scores = np.zeros_like(content_scores, dtype=np.float32)
-        has_cf = (
-            user_id is not None
-            and int(user_id) in self.user_mapping
-            and self.bundle.lightgcn_user_embeddings is not None
-            and self.bundle.lightgcn_item_embeddings is not None
-        )
-        if has_cf:
-            user_idx = self.user_mapping[int(user_id)]
-            cf_scores = self.bundle.lightgcn_user_embeddings[user_idx] @ self.bundle.lightgcn_item_embeddings.T
-
-        weights = self.bundle.hybrid_config or {}
-        cf_weight = float(weights.get("cf_weight", 0.45 if has_cf else 0.0))
-        content_weight = float(weights.get("content_weight", 0.45 if has_cf else 0.85))
-        popularity_weight = float(weights.get("popularity_weight", 0.10 if has_cf else 0.15))
-
-        scores = (
-            cf_weight * minmax(cf_scores)
-            + content_weight * minmax(content_scores)
-            + popularity_weight * minmax(popularity_scores)
-        )
-        # chan phim da xem 
-        blocked = set(session_item_indices)
-        if user_id is not None and int(user_id) in self.user_mapping:
-            watched = self.bundle.hybrid_config.get("train_user_items", {}).get(str(self.user_mapping[int(user_id)]), [])
-            blocked.update(int(item) for item in watched)
-        if blocked:
-            scores[list(blocked)] = -np.inf
-
-        top_indices = top_k_from_scores(scores, top_k)
-        return [self._movie_payload(idx, float(scores[idx]), self._explanations(idx, session_item_indices, has_cf)) for idx in top_indices]
-    # xây dựng payload cho mỗi phim trong kết quả đề xuất, 
-    # bao gồm movie_id, tmdb_id, title, điểm số, poster_url và explanation_tags dựa trên thông tin trong catalog và các giải thích được tạo ra
-    def _movie_payload(self, item_idx: int, score: float | None, explanation_tags: list[str]) -> dict:
+        item_idx: int,
+        score: float | None = None,
+        explanation_tags: list[str] | None = None,
+        include_detail: bool = False,
+        match_score: float | None = None,
+    ) -> dict:
         row = self.catalog.iloc[item_idx]
-        return {
-            "movie_id": int(row.get("movieId", self.index_to_movie_id.get(item_idx, item_idx))),
-            "tmdb_id": None if "tmdb_id" not in row or pd.isna(row.get("tmdb_id")) else int(row.get("tmdb_id")),
+        movie_id = int(row.get("movieId", self.index_to_movie_id.get(item_idx, item_idx)))
+        vote_average = self._json_scalar(row.get("vote_average", 0.0))
+        payload = {
+            "movie_id": movie_id,
+            "movieId": movie_id,
+            "tmdb_id": self._optional_int(row.get("tmdb_id")),
             "title": str(row.get("title", "")),
-            "score": score,
-            "poster_url": row.get("poster_url") if pd.notna(row.get("poster_url", None)) else None,
-            "explanation_tags": explanation_tags,
+            "genres": str(row.get("genres", "")),
+            "tmdb_genres": str(row.get("tmdb_genres", "")),
+            "score": score if score is not None else float(vote_average or 0.0),
+            "vote_average": float(vote_average or 0.0),
+            "vote_count": int(float(self._json_scalar(row.get("vote_count", 0)) or 0)),
+            "popularity": float(self._json_scalar(row.get("popularity", 0.0)) or 0.0),
+            "poster_url": self._optional_str(row.get("poster_url")),
+            "release_date": self._optional_str(row.get("release_date")),
+            "release_year": self._release_year(item_idx),
+            "year": self._release_year(item_idx),
+            "overview": self._optional_str(row.get("overview")) or "Chưa có thông tin tóm tắt cho bộ phim này.",
+            "director": self._optional_str(row.get("director")),
+            "cast": self._optional_str(row.get("cast")),
+            "runtime_minutes": int(float(self._json_scalar(row.get("runtime_minutes", 0)) or 0)),
+            "explanation_tags": explanation_tags or [],
         }
+        if match_score is not None:
+            payload["match_score"] = match_score
+        if include_detail:
+            for field in ["keywords", "writers", "production_companies", "production_countries", "collection", "original_language"]:
+                payload[field] = self._optional_str(row.get(field))
+        return payload
+
+    def _movie_id_to_item_idx(self, movie_id: int | str) -> int | None:
+        text = str(movie_id).strip()
+        if text.startswith("ml_"):
+            text = text[3:]
+        if not text.isdigit():
+            return None
+        return self.item_mapping.get(int(text))
+
+    def _rank_catalog(self, top_k: int, key) -> list[dict]:
+        item_indices = list(range(len(self.catalog)))
+        item_indices.sort(key=key, reverse=True)
+        return [self._movie_payload(idx) for idx in item_indices[: max(1, min(int(top_k), 100))]]
+
+    def _numeric(self, item_idx: int, field: str) -> float:
+        return float(self._json_scalar(self.catalog.iloc[item_idx].get(field, 0.0)) or 0.0)
+
+    def _release_year(self, item_idx: int) -> int:
+        row = self.catalog.iloc[item_idx]
+        year = self._json_scalar(row.get("release_year", ""))
+        if str(year).isdigit():
+            return int(year)
+        release_date = str(row.get("release_date", ""))
+        return int(release_date[:4]) if release_date[:4].isdigit() else 0
+
+    def _match_score(self, score: float) -> float:
+        if not np.isfinite(score):
+            return 0.0
+        return float(max(0.0, min(1.0, score)))
+
+    def _normalise_model_name(self, model_name: str | None) -> str:
+        text = (model_name or "hybrid").strip().lower()
+        if "lightgcn" in text:
+            return "lightgcn"
+        if "content" in text or "tfidf" in text or "sbert" in text:
+            return "content"
+        if "popular" in text:
+            return "popularity"
+        return "hybrid"
+
+    def _similarity_explanations(self, source_idx: int, item_idx: int) -> list[str]:
+        overlap = self._genre_overlap(source_idx, item_idx)
+        if overlap:
+            return ["cùng thể loại: " + ", ".join(overlap[:3])]
+        return ["tương tự theo metadata"]
 
     def _explanations(self, item_idx: int, session_item_indices: list[int], has_cf: bool) -> list[str]:
         tags: list[str] = []
@@ -166,16 +384,47 @@ class HybridArtifactRecommender:
         if has_cf:
             tags.append("phù hợp lịch sử đánh giá")
         if session_item_indices:
-            session_genres = set()
-            for idx in session_item_indices:
-                session_genres.update(str(self.catalog.iloc[idx].get("genres", "")).split("|"))
-                session_genres.update(str(self.catalog.iloc[idx].get("tmdb_genres", "")).split("|"))
-            row_genres = set(str(row.get("genres", "")).split("|")) | set(str(row.get("tmdb_genres", "")).split("|"))
-            overlap = sorted(g for g in session_genres & row_genres if g and g != "(no genres listed)")
+            overlap = sorted({genre for source_idx in session_item_indices for genre in self._genre_overlap(source_idx, item_idx)})
             if overlap:
                 tags.append("cùng thể loại: " + ", ".join(overlap[:3]))
-        if row.get("director"):
-            tags.append(f"đạo diễn {row.get('director')}")
+        director = self._optional_str(row.get("director"))
+        if director:
+            tags.append(f"đạo diễn {director.split('|')[0]}")
         if not tags:
             tags.append("phổ biến trong tập dữ liệu")
         return tags[:3]
+
+    def _genre_overlap(self, left_idx: int, right_idx: int) -> list[str]:
+        def genres(idx: int) -> set[str]:
+            row = self.catalog.iloc[idx]
+            values = f"{row.get('genres', '')}|{row.get('tmdb_genres', '')}".replace(",", "|").split("|")
+            return {value.strip() for value in values if value.strip() and value.strip() != "(no genres listed)"}
+
+        return sorted(genres(left_idx) & genres(right_idx))
+
+    @staticmethod
+    def _optional_int(value) -> int | None:
+        if pd.isna(value):
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _optional_str(value) -> str | None:
+        if value is None or pd.isna(value):
+            return None
+        text = str(value).strip()
+        if not text or text.lower() == "nan":
+            return None
+        return text
+
+    @staticmethod
+    def _json_scalar(value):
+        if value is None or pd.isna(value):
+            return None
+        if isinstance(value, np.generic):
+            return value.item()
+        return value
+
