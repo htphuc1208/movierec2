@@ -89,15 +89,18 @@ def add_session_movie(movie: dict[str, Any]) -> None:
         return
     session_ids = st.session_state.setdefault("session_context", [])
     titles = st.session_state.setdefault("session_movie_titles", {})
+    posters = st.session_state.setdefault("session_movie_posters", {})
     if movie_id not in session_ids:
         session_ids.append(movie_id)
     titles[str(movie_id)] = clean_title(movie.get("title", f"Movie {movie_id}"))
+    posters[str(movie_id)] = movie.get("poster_url") or ""
 
 
 def remove_session_movie(movie_id: int) -> None:
     session_ids = st.session_state.setdefault("session_context", [])
     st.session_state.session_context = [int(value) for value in session_ids if int(value) != int(movie_id)]
     st.session_state.setdefault("session_movie_titles", {}).pop(str(int(movie_id)), None)
+    st.session_state.setdefault("session_movie_posters", {}).pop(str(int(movie_id)), None)
 
 
 def toggle_session_movie(movie: dict[str, Any]) -> None:
@@ -113,6 +116,7 @@ def toggle_session_movie(movie: dict[str, Any]) -> None:
 def clear_session_context() -> None:
     st.session_state.session_context = []
     st.session_state.session_movie_titles = {}
+    st.session_state.session_movie_posters = {}
 
 
 def navigate(page: str, movie_id: int | None = None, tags: list[str] | None = None) -> None:
@@ -130,6 +134,7 @@ def init_state() -> None:
     st.session_state.setdefault("current_tags", [])
     st.session_state.setdefault("session_context", [])
     st.session_state.setdefault("session_movie_titles", {})
+    st.session_state.setdefault("session_movie_posters", {})
     st.session_state.setdefault("session_weight", 0.65)
 
 
@@ -333,15 +338,16 @@ def render_movie_card(movie: dict[str, Any], key: str, is_row: bool = False) -> 
         
     rating_str = f"⭐{score:.1f}" if score > 0 else "Chưa có điểm"
 
+    match_html = ""
     if match_score is not None and 0.0 < match_score <= 1.0:
-        match_html = f'<span style="color: #46d369; font-weight: bold; margin-right: 6px; font-size: 11px;">{int(match_score * 100)}% Match</span>'
-    else:
-        match_html = ''
+        match_html = f'<span style="color: #46d369; font-weight: bold; font-size: 11px;">{int(match_score * 100)}% Match</span>'
 
     tags_html = ""
     if explanation_tags:
         for tag in explanation_tags[:2]:
-            tags_html += f'<span style="background-color: rgba(245, 197, 24, 0.15); color: #F5C518; border: 1px solid rgba(245, 197, 24, 0.3); border-radius: 4px; padding: 2px 6px; font-size: 10px; margin-right: 4px; display: inline-block; white-space: nowrap;">{safe_text(tag)}</span>'
+            tags_html += f'<span style="background-color: rgba(245, 197, 24, 0.15); color: #F5C518; border: 1px solid rgba(245, 197, 24, 0.3); border-radius: 4px; padding: 2px 6px; font-size: 10px; display: inline-block; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{safe_text(tag)}</span>'
+
+    card_height = "135px" if explanation_tags else "75px"
 
     if poster_url and str(poster_url).startswith("http"):
         img_html = f'<img src="{poster_url}" style="width: 100%; height: 100%; object-fit: cover;">'
@@ -355,15 +361,15 @@ def render_movie_card(movie: dict[str, Any], key: str, is_row: bool = False) -> 
 <div style="width: 100%; aspect-ratio: 2/3; background-color: rgba(255, 255, 255, 0.05); border-radius: 8px; overflow: hidden; margin-bottom: 12px;">
 {img_html}
 </div>
-<div style="height: 105px; display: flex; flex-direction: column; justify-content: space-between;">
-<div style="font-weight: bold; font-size: 15px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">
+<div style="height: {card_height}; margin-bottom: 10px;">
+<div style="font-weight: bold; font-size: 15px; line-height: 1.4; height: 44px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-bottom: 4px;">
 {title}
 </div>
-<div style="font-size: 13px; color: #aaa; margin-top: auto;">
-<div style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+<div style="font-size: 13px; color: #aaa;">
+<div style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 8px;">
 {rating_str} • {genres}
 </div>
-<div style="display: flex; flex-wrap: wrap; align-items: center; min-height: 24px; margin-top: 4px;">
+<div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
 {match_html}{tags_html}
 </div>
 </div>
@@ -407,28 +413,62 @@ def render_session_panel() -> None:
         return
 
     titles = st.session_state.setdefault("session_movie_titles", {})
+    posters = st.session_state.setdefault("session_movie_posters", {}) 
+    
     with st.container(border=True):
-        title_col, slider_col, clear_col = st.columns([2.5, 2, 0.8], vertical_alignment="center")
+        title_col, slider_col, clear_col = st.columns([3, 2.5, 1], vertical_alignment="center")
+        
         with title_col:
-            st.markdown(f"**Gu phiên hiện tại** · {len(session_ids)} phim")
-            st.caption("Các phim này sẽ điều chỉnh gợi ý ngay trong phiên hiện tại.")
+            st.markdown(f"<h4 style='margin-bottom: 0px;'>Gu phiên hiện tại <span style='color: #F5C518; font-size: 1.1rem;'>({len(session_ids)} phim)</span></h4>", unsafe_allow_html=True)
+            st.caption("Gợi ý sẽ được tinh chỉnh theo các phim này.")
+            
         with slider_col:
             st.session_state.session_weight = st.slider(
-                "Mức ưu tiên gu phiên",
+                "Mức ưu tiên",
                 min_value=0.0,
                 max_value=1.0,
                 value=float(st.session_state.get("session_weight", 0.65)),
                 step=0.05,
-                help="0 = ưu tiên lịch sử user, 1 = ưu tiên các phim vừa chọn trong phiên.",
+                label_visibility="collapsed"
             )
-        with clear_col:
-            st.button("Xóa gu", on_click=clear_session_context, use_container_width=True)
+            st.markdown("<div style='text-align: center; font-size: 0.8rem; color: #aaa; margin-top: -12px;'>Mức ưu tiên gu phiên</div>", unsafe_allow_html=True)
 
-        columns = st.columns(min(4, len(session_ids)))
-        for idx, movie_id in enumerate(session_ids):
-            with columns[idx % len(columns)]:
-                st.markdown(f"**{safe_text(titles.get(str(movie_id), f'Movie {movie_id}'))}**")
-                st.button("Bỏ", key=f"session_remove_{movie_id}", on_click=remove_session_movie, args=(movie_id,), use_container_width=True)
+        with clear_col:
+            st.button("Xóa tất cả", on_click=clear_session_context, use_container_width=True)
+
+        st.markdown("<hr style='margin: 5px 0 15px 0; border-color: rgba(255,255,255,0.1);'>", unsafe_allow_html=True)
+        
+        cols_per_row = 3
+        
+        for start_idx in range(0, len(session_ids), cols_per_row):
+            cols = st.columns(cols_per_row)
+            for col_idx, movie_id in enumerate(session_ids[start_idx : start_idx + cols_per_row]):
+                title = titles.get(str(movie_id), f'Movie {movie_id}')
+                poster = posters.get(str(movie_id), "")
+                
+                short_title = (title[:30] + '...') if len(title) > 30 else title
+                
+                if not poster or str(poster).lower() == "nan":
+                    poster = "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?ixlib=rb-4.0.3&auto=format&fit=crop&w=150&q=80"
+                
+                with cols[col_idx]:
+                    with st.container(border=True):
+                        c_info, c_btn = st.columns([0.85, 0.15], vertical_alignment="center")
+                        
+                        with c_info:
+                            st.markdown(
+                                f"""
+                                <div style='display: flex; align-items: center; gap: 12px; margin-top: -7px; margin-bottom: 0px;'>
+                                    <img src="{poster}" style="width: 32px; height: 48px; object-fit: cover; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.5);">
+                                    <div style='font-size: 0.95rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;' title='{safe_text(title)}'>
+                                        {safe_text(short_title)}
+                                    </div>
+                                </div>
+                                """, 
+                                unsafe_allow_html=True
+                            )
+                        with c_btn:
+                            st.button("✖", key=f"session_remove_{movie_id}", on_click=remove_session_movie, args=(movie_id,), use_container_width=True, help="Xóa phim này")
 
 
 def recommend(
@@ -462,13 +502,14 @@ def render_home_page() -> None:
     
     user_id = st.session_state.current_user
     session_context = get_session_context()
+    session_weight = float(st.session_state.get("session_weight", 0.65))
     
     if user_id is not None:
         col_title, col_model = st.columns([5, 1], vertical_alignment="bottom")
         
         with col_title:
             title = "Được đề xuất cho bạn"
-            if session_context:
+            if session_context and session_weight > 0.0:
                 title += " · điều chỉnh theo gu phiên"
             st.markdown(f"<h3 style='margin-top: 15px; margin-bottom: 0;'>{title}</h3>", unsafe_allow_html=True)
             
@@ -485,7 +526,7 @@ def render_home_page() -> None:
         
         render_movie_row("", recs, "recommended")
         
-    elif session_context:
+    elif session_context and session_weight > 0.0:
         st.markdown("<h3 style='margin-top: 15px; margin-bottom: 0;'>Gợi ý theo gu phiên hiện tại</h3>", unsafe_allow_html=True)
         recs = recommend(None, model_name="hybrid", top_k=15, session_context=session_context)
         render_movie_row("", recs, "session_recommended")
