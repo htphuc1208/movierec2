@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -47,7 +49,8 @@ class BPRMFRecommender:
         rng = np.random.default_rng(self.seed)
         samples_per_epoch = max(self.batch_size, sum(len(v) for v in dataset.train_user_items.values()))
         losses: list[float] = []
-        for _ in range(self.epochs):
+        verbose = os.getenv("RECOMMENDER_VERBOSE_TRAIN", "0") == "1"
+        for epoch in range(self.epochs):
             users, positives, negatives = sample_bpr_triplets(dataset.train_user_items, dataset.num_items, samples_per_epoch, rng)
             order = rng.permutation(len(users))
             batch_losses: list[float] = []
@@ -68,7 +71,10 @@ class BPRMFRecommender:
                 loss.backward()
                 optimizer.step()
                 batch_losses.append(float(loss.detach().cpu()))
-            losses.append(float(np.mean(batch_losses)))
+            epoch_loss = float(np.mean(batch_losses))
+            losses.append(epoch_loss)
+            if verbose:
+                print(f"{self.name} epoch {epoch + 1}/{self.epochs} loss={epoch_loss:.6f}", flush=True)
         self.user_embeddings_ = model.user_embedding.weight.detach().cpu().numpy().astype(np.float32)
         self.item_embeddings_ = model.item_embedding.weight.detach().cpu().numpy().astype(np.float32)
         self.metadata = {"embedding_dim": self.embedding_dim, "epochs": self.epochs, "losses": losses}
@@ -219,7 +225,8 @@ class NeuMFRecommender:
         users, items, labels = _sample_binary_examples(dataset, self.negatives_per_positive, self.seed)
         rng = np.random.default_rng(self.seed)
         losses: list[float] = []
-        for _ in range(self.epochs):
+        verbose = os.getenv("RECOMMENDER_VERBOSE_TRAIN", "0") == "1"
+        for epoch in range(self.epochs):
             order = rng.permutation(len(users))
             batch_losses: list[float] = []
             for start in range(0, len(order), self.batch_size):
@@ -232,7 +239,10 @@ class NeuMFRecommender:
                 loss.backward()
                 optimizer.step()
                 batch_losses.append(float(loss.detach().cpu()))
-            losses.append(float(np.mean(batch_losses)))
+            epoch_loss = float(np.mean(batch_losses))
+            losses.append(epoch_loss)
+            if verbose:
+                print(f"{self.name} epoch {epoch + 1}/{self.epochs} loss={epoch_loss:.6f}", flush=True)
         self.model_ = model
         self.num_items_ = dataset.num_items
         self.metadata = {"embedding_dim": self.embedding_dim, "epochs": self.epochs, "losses": losses}
