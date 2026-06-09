@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 import numpy as np
 
 
@@ -132,7 +134,8 @@ def train_lightgcn_bpr(
     samples_per_epoch = samples_per_epoch or max(batch_size, sum(len(v) for v in user_positive_items.values()))
     losses: list[float] = []
 
-    for _ in range(epochs):
+    verbose = os.getenv("RECOMMENDER_VERBOSE_TRAIN", "0") == "1"
+    for epoch in range(epochs):
         # sample_bpr_triplets tra ve 3 vector: users, positives, negatives, moi vector co do dai bang samples_per_epoch
         users, positives, negatives = sample_bpr_triplets(user_positive_items, num_items, samples_per_epoch, rng)
         epoch_losses: list[float] = []
@@ -159,6 +162,9 @@ def train_lightgcn_bpr(
             loss.backward()
             optimizer.step()
             epoch_losses.append(float(loss.detach().cpu()))
-        losses.append(float(np.mean(epoch_losses)))
+        epoch_loss = float(np.mean(epoch_losses))
+        losses.append(epoch_loss)
+        if verbose:
+            print(f"LightGCN epoch {epoch + 1}/{epochs} loss={epoch_loss:.6f}", flush=True)
 
     return losses

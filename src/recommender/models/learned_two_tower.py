@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -62,7 +64,8 @@ class LearnedTwoTowerRecommender:
         rng = np.random.default_rng(self.seed)
         samples_per_epoch = max(self.batch_size, sum(len(v) for v in dataset.train_user_items.values()))
         losses: list[float] = []
-        for _ in range(self.epochs):
+        verbose = os.getenv("RECOMMENDER_VERBOSE_TRAIN", "0") == "1"
+        for epoch in range(self.epochs):
             users, positives, negatives = sample_bpr_triplets(dataset.train_user_items, dataset.num_items, samples_per_epoch, rng)
             order = rng.permutation(len(users))
             batch_losses: list[float] = []
@@ -80,7 +83,10 @@ class LearnedTwoTowerRecommender:
                 loss.backward()
                 optimizer.step()
                 batch_losses.append(float(loss.detach().cpu()))
-            losses.append(float(np.mean(batch_losses)))
+            epoch_loss = float(np.mean(batch_losses))
+            losses.append(epoch_loss)
+            if verbose:
+                print(f"{self.name} epoch {epoch + 1}/{self.epochs} loss={epoch_loss:.6f}", flush=True)
 
         model.eval()
         with torch.no_grad():
