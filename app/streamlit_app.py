@@ -79,10 +79,11 @@ def parse_movie_id(movie: dict[str, Any]) -> int:
         return 0
 
 
-def navigate(page: str, movie_id: int | None = None) -> None:
+def navigate(page: str, movie_id: int | None = None, tags: list[str] | None = None) -> None:
     st.session_state.page = page
     if movie_id is not None:
         st.session_state.movie_id = int(movie_id)
+    st.session_state.current_tags = tags if tags is not None else []
 
 
 def init_state() -> None:
@@ -90,6 +91,7 @@ def init_state() -> None:
     st.session_state.setdefault("movie_id", None)
     st.session_state.setdefault("current_user", None)
     st.session_state.setdefault("search_query", "")
+    st.session_state.setdefault("current_tags", [])
 
 
 def submit_search():
@@ -284,6 +286,8 @@ def render_movie_card(movie: dict[str, Any], key: str, is_row: bool = False) -> 
     vote_count = int(movie.get("vote_count") or 0)
     match_score = movie.get("match_score")
     genres = str(movie.get("tmdb_genres") or movie.get("genres") or "").replace("|", ", ")
+    
+    explanation_tags = movie.get("explanation_tags") or []
 
     if score > 5.0:
         score = score / 2.0
@@ -291,9 +295,14 @@ def render_movie_card(movie: dict[str, Any], key: str, is_row: bool = False) -> 
     rating_str = f"⭐{score:.1f}" if score > 0 else "Chưa có điểm"
 
     if match_score is not None and 0.0 < match_score <= 1.0:
-        match_html = f'<div style="color: #46d369; font-weight: bold; margin-top: 4px;">{int(match_score * 100)}% Match</div>'
+        match_html = f'<span style="color: #46d369; font-weight: bold; margin-right: 6px; font-size: 11px;">{int(match_score * 100)}% Match</span>'
     else:
-        match_html = '<div style="height: 22px; margin-top: 4px;"></div>'
+        match_html = ''
+
+    tags_html = ""
+    if explanation_tags:
+        for tag in explanation_tags[:2]:
+            tags_html += f'<span style="background-color: rgba(245, 197, 24, 0.15); color: #F5C518; border: 1px solid rgba(245, 197, 24, 0.3); border-radius: 4px; padding: 2px 6px; font-size: 10px; margin-right: 4px; display: inline-block; white-space: nowrap;">{safe_text(tag)}</span>'
 
     if poster_url and str(poster_url).startswith("http"):
         img_html = f'<img src="{poster_url}" style="width: 100%; height: 100%; object-fit: cover;">'
@@ -305,24 +314,26 @@ def render_movie_card(movie: dict[str, Any], key: str, is_row: bool = False) -> 
     with st.container(border=True):
         html_content = f"""{marker_html}
 <div style="width: 100%; aspect-ratio: 2/3; background-color: rgba(255, 255, 255, 0.05); border-radius: 8px; overflow: hidden; margin-bottom: 12px;">
-    {img_html}
+{img_html}
 </div>
 <div style="height: 105px; display: flex; flex-direction: column; justify-content: space-between;">
-    <div style="font-weight: bold; font-size: 15px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">
-        {title}
-    </div>
-    <div style="font-size: 13px; color: #aaa;">
-        <div style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-            {rating_str} • {genres}
-        </div>
-        {match_html}
-    </div>
-</div>"""
-
+<div style="font-weight: bold; font-size: 15px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">
+{title}
+</div>
+<div style="font-size: 13px; color: #aaa; margin-top: auto;">
+<div style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+{rating_str} • {genres}
+</div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; min-height: 24px; margin-top: 4px;">
+{match_html}{tags_html}
+</div>
+</div>
+</div>
+"""
         st.markdown(html_content, unsafe_allow_html=True)
         
         if movie_id > 0:
-            st.button("Chi tiết", key=f"btn_{key}_{movie_id}", on_click=navigate, args=("detail", movie_id), use_container_width=True)
+            st.button("Chi tiết", key=f"btn_{key}_{movie_id}", on_click=navigate, args=("detail", movie_id, explanation_tags), use_container_width=True)
         else:
             st.button("Lỗi ID", key=f"btn_err_{key}", disabled=True, use_container_width=True)
 
@@ -474,6 +485,8 @@ def render_detail_page(movie_id: int | None) -> None:
     overview = movie.get("overview") or "Chưa có thông tin tóm tắt cho bộ phim này."
     director = movie.get("director") or "Đang cập nhật"
     cast = str(movie.get("cast") or "Đang cập nhật").replace("|", ", ")
+    
+    explanation_tags = st.session_state.get("current_tags", [])
 
     if score > 5.0: score = score / 2.0
 
@@ -489,7 +502,14 @@ def render_detail_page(movie_id: int | None) -> None:
         st.markdown(f"<p style='color: #F5C518; font-size: 1.3rem; font-weight: bold;'>⭐{score:.1f} <span style='color: #aaa; font-weight: normal; font-size: 1rem;'>({vote_count} đánh giá)</span></p>", unsafe_allow_html=True)
         st.markdown(f"<p style='font-size: 1.1rem; color: #ddd;'><b>Đạo diễn:</b> {director}</p>", unsafe_allow_html=True)
         st.markdown(f"<p style='font-size: 1.1rem; color: #ddd;'><b>Diễn viên:</b> {cast}</p>", unsafe_allow_html=True)
-        st.markdown(f"<p style='font-size: 1.1rem; color: #ddd;'><b>Thể loại:</b> {genres}</p>", unsafe_allow_html=True)
+        st.markdown(f"<p style='font-size: 1.1rem; color: #ddd; margin-bottom: 5px;'><b>Thể loại:</b> {genres}</p>", unsafe_allow_html=True)
+        
+        if explanation_tags:
+            tags_html = "<div style='display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; margin-top: 5px;'>"
+            for tag in explanation_tags:
+                tags_html += f"<span style='background-color: rgba(245, 197, 24, 0.15); color: #F5C518; border: 1px solid rgba(245, 197, 24, 0.3); border-radius: 6px; padding: 4px 10px; font-size: 0.9rem; font-weight: 500;'>{safe_text(tag)}</span>"
+            tags_html += "</div>"
+            st.markdown(tags_html, unsafe_allow_html=True)
         
         st.markdown(f"<p style='color: #aaa; line-height: 1.6; margin-top: 15px;'>{overview}</p>", unsafe_allow_html=True)
         
