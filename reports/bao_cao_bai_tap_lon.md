@@ -187,6 +187,105 @@ Tình trạng enrich hiện tại:
 | MovieLens enriched | 9,742 | 9,621 | 9,617 | 9,620 | 9,617 | 9,591 |
 | Letterboxd enriched | 7,848 | 7,337 | 7,321 | 7,328 | 7,318 | 7,291 |
 
+### 3.4. Phân tích khám phá dữ liệu (EDA)
+
+Trước khi xây dựng mô hình, việc phân tích khám phá dữ liệu (Exploratory Data Analysis) giúp hiểu đặc trưng của dataset, xác định các thách thức và định hướng thiết kế hệ thống. EDA đầy đủ được sinh tự động bằng `scripts/generate_eda_report.py`, kết quả lưu tại `reports/eda_movielens/` và `reports/eda_letterboxd/`.
+
+#### 3.4.1. Chất lượng dữ liệu
+
+Cả hai dataset đều không có missing values trong bảng interactions (userId, movieId, rating). Catalog enriched từ TMDb cũng gần như đầy đủ (>93% phim có TMDb metadata). Điều này cho phép sử dụng trực tiếp mà không cần imputation phức tạp.
+
+#### 3.4.2. Phân phối Rating
+
+| Dataset | Rating TB | Tỷ lệ positive (≥4.0) | Đặc điểm |
+|---|---:|---:|---|
+| MovieLens | 3.50 | 48.2% | Phân phối gần cân bằng, rating 4.0 phổ biến nhất |
+| Letterboxd | 3.55 | 40.2% | Rating 4.0 phổ biến nhất, phân phối lệch phải |
+
+Cả hai dataset đều có rating trung bình > 3.0, cho thấy xu hướng rating tích cực. Điều này phù hợp với việc dùng threshold ≥ 4.0 để xác định positive feedback.
+
+#### 3.4.3. Phân tích hoạt động User (Power-law)
+
+| Thuộc tính | MovieLens | Letterboxd |
+|---|---:|---:|
+| Trung bình ratings/user | 165.3 | 54.8 |
+| Trung vị ratings/user | 70.5 | 32.0 |
+| Users cold-start (≤ 20 ratings) | 14 (2.3%) | 2,036 (22.1%) |
+| Power users (> 100 ratings) | 245 (40.2%) | 1,653 (18.0%) |
+
+Phân phối hoạt động user theo dạng **power-law** — đặc trưng phổ biến của recommendation datasets. Letterboxd có tỷ lệ cold-start user cao hơn nhiều (22.1% vs 2.3%), đặt ra yêu cầu mạnh hơn về xử lý cold-start.
+
+#### 3.4.4. Phân tích Long-tail phim
+
+| Thuộc tính | MovieLens | Letterboxd |
+|---|---:|---:|
+| Trung bình ratings/phim | 10.4 | 64.2 |
+| Phim chỉ có 1 rating | 3,446 (35.4%) | 441 (5.6%) |
+| Phim có ≤ 5 ratings | 6,456 (66.4%) | 1,483 (18.9%) |
+| Top 1% phim chiếm % interactions | 15.7% | 8.2% |
+| Phim chiếm 80% interactions | 23% | 35% |
+
+Hiện tượng **long-tail** rõ rệt trên cả hai dataset. MovieLens có long-tail nghiêm trọng hơn (35.4% phim chỉ có 1 rating). Content-based recommendation đặc biệt quan trọng cho các phim ở long-tail vì CF không có đủ signal.
+
+#### 3.4.5. Phân tích theo thời gian
+
+MovieLens có timestamp thực (2000-2018), cho phép phân tích xu hướng rating theo thời gian. Letterboxd sử dụng timestamp của crawler, không phải thời điểm xem phim thực tế, nên không dùng cho temporal analysis.
+
+Trên MovieLens:
+- Phần lớn ratings tập trung trong 2015-2018
+- Rating phân bố đều theo ngày trong tuần
+- Giờ rating cao nhất: 19:00-23:00 (buổi tối)
+
+#### 3.4.6. Phân tích thể loại
+
+Top 5 thể loại phổ biến nhất:
+
+| Hạng | MovieLens | Letterboxd |
+|---:|---|---|
+| 1 | Drama | Drama |
+| 2 | Comedy | Thriller |
+| 3 | Thriller | Comedy |
+| 4 | Action | Romance |
+| 5 | Romance | Action |
+
+Ma trận đồng xuất hiện thể loại cho thấy Drama-Romance, Action-Thriller, và Action-Adventure thường đi cùng nhau. Thông tin này hữu ích cho content-based filtering.
+
+#### 3.4.7. Phân tích Sparsity
+
+| Dataset | Ma trận | Ô có giá trị | Sparsity |
+|---|---|---:|---:|
+| MovieLens | 610 × 9,724 | 100,836 | 98.30% |
+| Letterboxd | 9,197 × 7,848 | 503,761 | 99.30% |
+
+Sparsity cao (>98%) là đặc trưng cốt lõi của recommendation datasets. Đây là lý do chính để sử dụng:
+- **LightGCN** khai thác graph structure để lan truyền thông tin qua user-item bipartite graph
+- **Content-based** bổ trợ cho trường hợp không có đủ collaborative signal
+- **Hybrid approach** kết hợp ưu điểm của cả hai
+
+#### 3.4.8. Phân cụm người dùng (User Segmentation)
+
+Sử dụng K-Means clustering trên feature trung bình (thể loại, popularity, vote_average, release_year) của các phim mà user đã xem, kết hợp PCA visualization:
+
+| Cụm | MovieLens | Letterboxd |
+|---:|---|---|
+| 0 | Fan Action/Adventure/SciFi | Fan Drama/Romance |
+| 1 | Fan Comedy/Drama | Fan Thriller/Action |
+| 2 | Fan Drama/Romance | Fan Comedy/Animation |
+| 3 | Fan Drama/Thriller | Fan Drama/Horror |
+
+User segmentation giúp xác nhận rằng user base có sở thích đa dạng → cần mô hình cá nhân hóa, không thể dùng popularity thuần.
+
+#### 3.4.9. Ý nghĩa EDA cho thiết kế hệ thống
+
+Từ phân tích EDA, các quyết định thiết kế sau được đưa ra:
+
+1. **Hybrid approach (CF + Content)**: CF tốt cho warm users, Content giúp cold-start users và long-tail items.
+2. **Implicit feedback với threshold ≥ 4.0**: Phân phối rating cho phép dùng binary implicit.
+3. **LightGCN cho CF**: Khai thác graph structure hiệu quả với sparsity cao.
+4. **Learned Two-Tower**: Kết hợp content embedding và user embedding trong không gian chung.
+5. **Popularity fallback**: Cần thiết cho cold-start users (đặc biệt trên Letterboxd 22% cold-start).
+6. **BPR loss**: Phù hợp cho learning-to-rank với implicit feedback.
+
 ## 4. Biểu diễn dữ liệu
 
 ### 4.1. Interaction matrix
@@ -498,67 +597,131 @@ Các metric chính:
 
 Trong recommender system, đặc biệt với implicit feedback, ranking metrics quan trọng hơn RMSE. RMSE chỉ được dùng như baseline phụ cho SVD explicit rating.
 
-### 8.2. Kết quả train artifact hiện tại
+### 8.2. Kết quả train artifact PDF-clean
 
-Kết quả với MovieLens artifact hiện tại:
-
-| Split | Precision@10 | Recall@10 | NDCG@10 | MRR |
-|---|---:|---:|---:|---:|
-| Validation | 0.0345 | 0.0809 | 0.0629 | 0.0986 |
-| Test | 0.0224 | 0.0476 | 0.0391 | 0.0644 |
-
-Thông tin LightGCN:
-
-- Đã bật LightGCN.
-- BPR loss giảm từ khoảng 0.6902 xuống 0.1828 sau 50 epoch, cho thấy mô hình học được quan hệ user-item.
-- Trọng số hybrid hiện tại: `cf_weight = 0.5`, `content_weight = 0.5`, `popularity_weight = 0.0`.
-
-Kết quả với Letterboxd artifact hiện tại:
+Kết quả artifact PDF-clean cho MovieLens (LightGCN + learned Two-Tower + TF-IDF content, 50 epoch):
 
 | Split | Precision@10 | Recall@10 | NDCG@10 | MRR |
 |---|---:|---:|---:|---:|
-| Validation | 0.0383 | 0.1589 | 0.1196 | 0.1597 |
-| Test | 0.0372 | 0.1505 | 0.1154 | 0.1545 |
+| Validation | 0.0350 | 0.0826 | 0.0641 | 0.1030 |
+| Test | 0.0224 | 0.0564 | 0.0446 | 0.0736 |
+
+Thông tin mô hình:
+
+- LightGCN: BPR loss giảm từ 0.6902 xuống 0.1887 sau 50 epoch.
+- Learned Two-Tower: BPR loss giảm từ 0.6914 xuống 0.3018 sau 50 epoch.
+- Train interactions: 38,833. Val: 4,872. Test: 4,875.
+- So với artifact cũ chỉ có LightGCN (NDCG@10 test = 0.0391), việc thêm Two-Tower cải thiện lên 0.0446 (+14%).
+
+Kết quả artifact cho Letterboxd (LightGCN + learned Two-Tower + TF-IDF content, 50 epoch):
+
+| Split | Precision@10 | Recall@10 | NDCG@10 | MRR |
+|---|---:|---:|---:|---:|
+| Validation | 0.0363 | 0.1585 | 0.1095 | 0.1361 |
+| Test | 0.0355 | 0.1562 | 0.1074 | 0.1314 |
+
+Thông tin mô hình Letterboxd:
+
+- LightGCN: BPR loss giảm từ 0.6868 xuống 0.1484 sau 50 epoch.
+- Learned Two-Tower: BPR loss giảm từ 0.6886 xuống 0.3245 sau 50 epoch.
+- Train interactions: 160,843. Val: 20,669. Test: 20,842.
 
 Nhận xét:
 
-- Letterboxd có kết quả NDCG@10 cao hơn MovieLens artifact hiện tại.
-- Điều này phù hợp vì Letterboxd processed có nhiều interaction hơn và density trên tập positive sau xử lý tốt hơn.
-- Popularity weight được tune về 0 trong artifact hiện tại, cho thấy trên validation, tín hiệu collaborative và content hữu ích hơn popularity thuần.
+- Letterboxd có NDCG@10 cao hơn MovieLens (0.1074 vs 0.0446) vì có nhiều interaction hơn (160K vs 38K).
+- LightGCN loss giảm sâu hơn trên Letterboxd (0.148 vs 0.189) nhờ nhiều dữ liệu hơn.
+- Popularity weight được tune về 0 trong cả hai artifact, cho thấy tín hiệu collaborative và content hữu ích hơn popularity thuần.
+- Kết quả sẽ cải thiện thêm khi train trên Kaggle GPU với SBERT backend.
 
 ### 8.3. Kết quả comparison trên MovieLens
 
-Kết quả comparison hiện có trong `reports/comparison_movielens`:
+Kết quả comparison đầy đủ trên MovieLens (TF-IDF backend, 50 epoch, `reports/comparison_movielens_tfidf`):
 
-| Model | Precision@10 | Recall@10 | NDCG@10 | MRR |
-|---|---:|---:|---:|---:|
-| EASE | 0.0299 | 0.0612 | 0.0506 | 0.0898 |
-| SVD Ranking | 0.0250 | 0.0604 | 0.0454 | 0.0727 |
-| ItemKNN Cosine | 0.0275 | 0.0554 | 0.0438 | 0.0736 |
-| UserKNN Cosine | 0.0255 | 0.0554 | 0.0435 | 0.0736 |
-| Hybrid Weighted No Popularity | 0.0235 | 0.0546 | 0.0426 | 0.0698 |
-| Hybrid Weighted Full | 0.0201 | 0.0432 | 0.0377 | 0.0688 |
-| Popularity Only | 0.0194 | 0.0397 | 0.0365 | 0.0677 |
-| LightGCN Only | 0.0184 | 0.0390 | 0.0359 | 0.0667 |
-| TF-IDF Only | 0.0063 | 0.0171 | 0.0113 | 0.0184 |
-| Random | 0.0013 | 0.0018 | 0.0030 | 0.0084 |
+Split stats: users=609, items=6298, train=38833, val=4872, test=4875. Sparse users (ít positive): 165. Warm users: 444. Long-tail items: 2950. Head items: 1443.
+
+**Baselines:**
+
+| Model | Precision@10 | Recall@10 | NDCG@10 | MRR | Sparse NDCG@10 |
+|---|---:|---:|---:|---:|---:|
+| EASE | 0.0299 | 0.0612 | 0.0506 | 0.0898 | 0.0430 |
+| SVD Ranking | 0.0250 | 0.0604 | 0.0454 | 0.0727 | 0.0454 |
+| ItemKNN Cosine | 0.0275 | 0.0554 | 0.0438 | 0.0736 | 0.0394 |
+| UserKNN Cosine | 0.0255 | 0.0554 | 0.0435 | 0.0736 | 0.0437 |
+| BPR-MF | 0.0242 | 0.0476 | 0.0388 | 0.0696 | 0.0364 |
+| Popularity Only | 0.0194 | 0.0397 | 0.0365 | 0.0677 | 0.0409 |
+| Random | 0.0013 | 0.0018 | 0.0030 | 0.0084 | 0.0000 |
+
+**Hybrid PDF-clean và ablation:**
+
+| Model | Precision@10 | Recall@10 | NDCG@10 | MRR | Sparse NDCG@10 |
+|---|---:|---:|---:|---:|---:|
+| Hybrid Ranker Full | 0.0248 | 0.0515 | 0.0437 | 0.0743 | 0.0507 |
+| Hybrid Weighted (No Popularity) | 0.0232 | 0.0565 | 0.0429 | 0.0727 | 0.0489 |
+| Hybrid Weighted Full | 0.0232 | 0.0565 | 0.0429 | 0.0727 | 0.0489 |
+| Hybrid No TMDb | 0.0232 | 0.0542 | 0.0406 | 0.0664 | 0.0479 |
+| Hybrid Ranker (No Popularity) | 0.0245 | 0.0523 | 0.0403 | 0.0659 | 0.0415 |
+| LightGCN Only | 0.0220 | 0.0458 | 0.0394 | 0.0687 | 0.0465 |
+| Learned Two-Tower | 0.0137 | 0.0324 | 0.0272 | 0.0478 | 0.0274 |
+| TF-IDF Only | 0.0063 | 0.0171 | 0.0113 | 0.0184 | 0.0153 |
 
 Nhận xét:
 
-- EASE đang là baseline mạnh nhất trong comparison MovieLens hiện tại.
-- Hybrid weighted chưa vượt EASE trên MovieLens local CPU run, cho thấy cần tiếp tục train/tune trên Kaggle bằng SBERT và epochs lớn hơn.
-- Content-only thấp hơn rõ rệt, chứng minh chỉ dùng metadata không đủ cho cá nhân hóa.
-- Random gần như bằng 0, xác nhận evaluation pipeline hợp lý.
-- BPR-MF trong run hiện tại thấp, có thể do số epoch/siêu tham số chưa phù hợp.
+- EASE là baseline mạnh nhất (NDCG@10 = 0.0506), phù hợp với nghiên cứu chỉ ra EASE là baseline đáng chú ý.
+- Hybrid ranker full đạt NDCG@10 = 0.0437, đứng thứ 4 tổng thể — nhưng dẫn đầu về Sparse NDCG@10 (0.0507), cho thấy hybrid tốt hơn cho user có ít lịch sử.
+- SVD Ranking đứng thứ 2 (0.0454), cho thấy matrix factorization cổ điển vẫn hiệu quả trên tập nhỏ.
+- BPR-MF cải thiện đáng kể (NDCG@10 = 0.0388) khi train 50 epoch thay vì 20 epoch.
+- Content-only (TF-IDF = 0.0113) thấp rõ rệt, chứng minh chỉ dùng metadata không đủ cho cá nhân hóa.
+- Random gần 0 (0.0030), xác nhận evaluation pipeline hợp lý.
+- Hybrid No TMDb (0.0406) thấp hơn Hybrid Full (0.0429), chứng minh TMDb metadata có đóng góp cho chất lượng gợi ý.
+- Learned Two-Tower (0.0272) thấp hơn kỳ vọng — cần SBERT input thay vì TF-IDF để cải thiện.
 
-### 8.4. Thí nghiệm cần chạy cho bản nộp cuối
+### 8.4. Kết quả comparison trên Letterboxd
 
-Để bản báo cáo cuối mạnh hơn, cần chạy trên Kaggle:
+Kết quả comparison đầy đủ trên Letterboxd (TF-IDF backend, 50 epoch, `reports/comparison_letterboxd_tfidf`):
 
-1. `letterboxd-pdf-clean`: LightGCN + SBERT + learned Two-Tower + weighted hybrid.
-2. `letterboxd-strong`: full comparison với EASE, ItemKNN, UserKNN, SVD, ALS, LightFM, strong ranker.
-3. Export `comparison_results.csv/json/md`.
-4. Cập nhật bảng kết quả trong mục 8.2 và 8.3.
+Split stats: users=8985, items=7211, train=160843, val=20669, test=20842. Sparse users: 2342. Warm users: 6643. Long-tail items: 3564. Head items: 1827.
+
+**Baselines:**
+
+| Model | Precision@10 | Recall@10 | NDCG@10 | MRR | Sparse NDCG@10 |
+|---|---:|---:|---:|---:|---:|
+| EASE | 0.0480 | 0.1940 | 0.1376 | 0.1742 | 0.0880 |
+| User KNN Cosine | 0.0409 | 0.1671 | 0.1155 | 0.1469 | 0.0726 |
+| Item KNN Cosine | 0.0402 | 0.1625 | 0.1148 | 0.1483 | 0.0672 |
+| SVD Ranking | 0.0293 | 0.1139 | 0.0809 | 0.1091 | 0.0493 |
+| BPR-MF | 0.0287 | 0.1122 | 0.0767 | 0.0999 | 0.0417 |
+| Popularity Only | 0.0199 | 0.0831 | 0.0525 | 0.0636 | 0.0317 |
+| Random | 0.0006 | 0.0022 | 0.0010 | 0.0010 | 0.0000 |
+
+**Hybrid PDF-clean và ablation:**
+
+| Model | Precision@10 | Recall@10 | NDCG@10 | MRR | Sparse NDCG@10 | Tail NDCG@10 |
+|---|---:|---:|---:|---:|---:|---:|
+| Hybrid Ranker Full | 0.0402 | 0.1732 | 0.1219 | 0.1517 | 0.1207 | 0.0098 |
+| Hybrid Ranker (No Pop) | 0.0401 | 0.1719 | 0.1215 | 0.1512 | 0.1212 | 0.0100 |
+| Hybrid Weighted Full | 0.0401 | 0.1711 | 0.1190 | 0.1487 | 0.1053 | 0.0046 |
+| LightGCN Only | 0.0356 | 0.1441 | 0.0959 | 0.1211 | 0.0538 | 0.0009 |
+| TF-IDF Only | 0.0074 | 0.0526 | 0.0339 | 0.0318 | 0.0997 | 0.0323 |
+| Learned Two-Tower | 0.0125 | 0.0498 | 0.0299 | 0.0372 | 0.0165 | 0.0000 |
+
+Nhận xét:
+
+- EASE vẫn là baseline mạnh nhất trên Letterboxd (NDCG@10 = 0.1376), đúng với pattern trên MovieLens.
+- Hybrid Ranker Full đứng thứ 2 (0.1219), nhưng vượt trội EASE trên **Sparse NDCG@10** (0.1207 vs 0.0880 — tốt hơn 37%), chứng minh hybrid tốt hơn cho cold-start users.
+- **Tail NDCG@10**: Hybrid có score > 0 trên long-tail items (0.0098), trong khi EASE và KNN = 0, chứng minh content component giúp recommend phim ít tương tác.
+- Letterboxd metrics cao hơn MovieLens (EASE 0.1376 vs 0.0506) vì dataset lớn hơn 4x.
+- TF-IDF Only (0.0339) cho thấy content-only vẫn yếu, nhưng trên Letterboxd tốt hơn MovieLens (0.0339 vs 0.0113) vì metadata chất lượng hơn.
+
+### 8.5. Thí nghiệm Kaggle GPU
+
+Để train phiên bản mạnh nhất, pipeline đã được submit lên Kaggle GPU:
+
+- **Kernel URL**: https://www.kaggle.com/code/ainemermaid/movierec3-training-v2
+- **Config**: TF-IDF backend, 100 epoch, LightGCN dim=128, batch_size=8192
+- **Phases**: PDF-clean × 2 datasets + Strong Ranker × 2 + Comparison Core + Comparison Full + Visualization + Audit
+
+Notebook tự động zip toàn bộ output artifacts về `full_training_outputs.zip` để tải về local.
+
 
 ## 9. Các chức năng chính của hệ thống
 

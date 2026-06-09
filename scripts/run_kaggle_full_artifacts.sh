@@ -208,13 +208,25 @@ fi
 run_step audit_artifacts "$PYTHON_BIN" -u scripts/audit_artifacts.py
 
 if command -v zip >/dev/null 2>&1; then
-  run_step zip_outputs zip -qr artifacts_and_reports_full.zip \
+  ZIP_PATHS=()
+  for path in \
     artifacts/movielens_pdf_clean \
     artifacts/letterboxd_pdf_clean \
     artifacts/movielens_strong \
     artifacts/letterboxd_strong \
     reports/comparison_sbert_pdf_clean_both \
-    reports/comparison_sbert_strong_both
+    reports/comparison_sbert_strong_both \
+    "$LOG_DIR"
+  do
+    if [[ -e "$path" ]]; then
+      ZIP_PATHS+=("$path")
+    else
+      log "SKIP zip missing path: $path"
+    fi
+  done
+  if [[ "${#ZIP_PATHS[@]}" -gt 0 ]]; then
+    run_step zip_outputs zip -qr artifacts_and_reports_full.zip "${ZIP_PATHS[@]}"
+  fi
   log "Created artifacts_and_reports_full.zip"
 fi
 

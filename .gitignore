@@ -6,15 +6,29 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .cache/
-# data/raw/*
-# data/processed/*
-# artifacts/*
-# build/
-# !data/raw/.gitkeep
-# !data/processed/.gitkeep
-# !artifacts/.gitkeep
-# *.pt
-# *.pth
-# *.npy
-# *.npz
-# *.parquet
+build/
+
+# Large data files - keep .gitkeep placeholders
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+# Artifacts - keep .gitkeep placeholder
+artifacts/*
+!artifacts/.gitkeep
+
+# Large binary formats
+*.pt
+*.pth
+*.npy
+*.npz
+
+# Kaggle outputs
+kaggle_outputs/
+movierec3_kaggle_input.zip
+
+# Logs
+logs/
+log/
+log_tensorboard/
