@@ -23,6 +23,7 @@ class RecommendationRequest(BaseModel):
     user_id: int | None = None
     top_k: int = Field(default=10, ge=1, le=100)
     session_context: list[str | int] = Field(default_factory=list)
+    session_weight: float = Field(default=0.65, ge=0.0, le=1.0)
     exclude_seen: bool = True
     model_name: str = "hybrid"
 
@@ -230,6 +231,7 @@ def recommendations(request: RecommendationRequest) -> RecommendationResponse:
             user_id=request.user_id,
             top_k=request.top_k,
             session_context=request.session_context,
+            session_weight=request.session_weight,
             exclude_seen=request.exclude_seen,
             model_name=request.model_name,
         )

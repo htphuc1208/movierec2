@@ -48,7 +48,7 @@ def test_api_health_and_recommendations(tmp_path, monkeypatch) -> None:
     client = TestClient(app)
     assert client.get("/health").json()["artifacts"]["ready"]
     assert client.get("/users").json()["users"] == [1]
-    response = client.post("/recommendations", json={"user_id": 1, "top_k": 1, "session_context": []})
+    response = client.post("/recommendations", json={"user_id": 1, "top_k": 1, "session_context": [], "session_weight": 0.7})
     assert response.status_code == 200
     assert len(response.json()["recommendations"]) == 1
     alias = client.post("/recommend", json={"user_id": 1, "top_k": 1, "session_context": [], "model_name": "SVD"})

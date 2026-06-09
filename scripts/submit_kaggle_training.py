@@ -30,7 +30,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--username", default=os.getenv("KAGGLE_USERNAME"),
                         help="Kaggle username/owner")
     parser.add_argument("--kernel-slug", default="movierec3-full-training")
-    parser.add_argument("--kernel-title", default="MovieRec3 Full Training Pipeline")
+    parser.add_argument("--kernel-title", default="MovieRec3 Full Training")
     parser.add_argument("--dataset-slug", default="movierec3-input")
     parser.add_argument("--skip-dataset-upload", action="store_true",
                         help="Skip dataset upload, assume already uploaded")
@@ -49,9 +49,15 @@ def kaggle_command() -> list[str]:
 
 
 def check_credentials() -> None:
-    has_file = (Path.home() / ".kaggle" / "kaggle.json").exists()
+    kaggle_dir = Path.home() / ".kaggle"
+    has_file = (
+        (kaggle_dir / "kaggle.json").exists()
+        or (kaggle_dir / "credentials.json").exists()
+        or (kaggle_dir / "access_token").exists()
+    )
     has_env = bool(os.getenv("KAGGLE_USERNAME") and os.getenv("KAGGLE_KEY"))
-    if not has_file and not has_env:
+    has_token_env = bool(os.getenv("KAGGLE_API_TOKEN"))
+    if not has_file and not has_env and not has_token_env:
         raise RuntimeError("Missing Kaggle credentials.")
 
 
@@ -65,16 +71,8 @@ def upload_dataset(username: str, dataset_slug: str) -> str:
     try:
         shutil.copy2(zip_path, staging / "movierec3_kaggle_input.zip")
 
-        # Unzip into staging
-        import zipfile
-        with zipfile.ZipFile(staging / "movierec3_kaggle_input.zip", "r") as zf:
-            zf.extractall(staging / "movierec3")
-
-        # Remove zip from staging to save space
-        (staging / "movierec3_kaggle_input.zip").unlink()
-
         metadata = {
-            "title": "MovieRec3 Input",
+            "title": dataset_slug,
             "id": f"{username}/{dataset_slug}",
             "licenses": [{"name": "CC0-1.0"}],
         }
@@ -86,19 +84,20 @@ def upload_dataset(username: str, dataset_slug: str) -> str:
         print("+", " ".join(cmd))
         result = subprocess.run(cmd, capture_output=True, text=True)
 
-        if result.returncode != 0:
-            if "already exists" in (result.stderr + result.stdout).lower():
-                print("Dataset already exists, updating version...")
-                cmd = [*kaggle_command(), "datasets", "version", "-p", str(staging),
-                       "-m", "Updated from submit_kaggle_training", "-q"]
-                print("+", " ".join(cmd))
-                subprocess.run(cmd, check=True)
-            else:
-                print("STDOUT:", result.stdout)
-                print("STDERR:", result.stderr)
-                result.check_returncode()
-        else:
+        output = result.stderr + result.stdout
+        output_lower = output.lower()
+        if result.returncode == 0 and "dataset creation error" not in output_lower:
             print(result.stdout)
+        elif any(text in output_lower for text in ("already exists", "already in use", "requested title")):
+            print("Dataset already exists, updating version...")
+            cmd = [*kaggle_command(), "datasets", "version", "-p", str(staging),
+                   "-m", "Updated from submit_kaggle_training", "-q"]
+            print("+", " ".join(cmd))
+            subprocess.run(cmd, check=True)
+        else:
+            print("STDOUT:", result.stdout)
+            print("STDERR:", result.stderr)
+            result.check_returncode()
 
         return f"{username}/{dataset_slug}"
     finally:

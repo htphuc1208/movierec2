@@ -1,18 +1,16 @@
-"""Kaggle script kernel for full GPU training pipeline.
+"""Kaggle script kernel for the full GPU training pipeline.
 
-Runs the complete run_kaggle_full_artifacts.sh pipeline:
-- Train PDF-clean artifacts (SBERT + LightGCN + Two-Tower) for MovieLens + Letterboxd
-- Train strong ranker artifacts (LightGBM) for both datasets
-- Run comparison suite (core + full) for both datasets
-- Audit and zip all outputs
-
-Submitted by scripts/submit_kaggle_training.py.
+This kernel is intentionally thin: it locates the uploaded project dataset,
+copies it to /kaggle/working, then delegates all training/comparison/audit
+work to scripts/run_kaggle_full_artifacts.sh. The shell script owns the actual
+pipeline parameters, including SBERT, LightGCN, Two-Tower and strong ranker
+training.
 """
 
 from __future__ import annotations
 
-import json
 import os
+import shutil
 import subprocess
 import sys
 import zipfile
@@ -20,269 +18,156 @@ from pathlib import Path
 
 
 WORKDIR = Path("/kaggle/working")
+OUTPUT_ZIP = WORKDIR / "full_training_outputs.zip"
 
 
-def run(command: list[str] | str, shell: bool = False, **kwargs) -> None:
-    if isinstance(command, list):
-        print("+", " ".join(command))
-    else:
-        print("+", command)
-    subprocess.run(command, check=True, shell=shell, **kwargs)
+def run(command: list[str], **kwargs) -> None:
+    print("+", " ".join(command), flush=True)
+    subprocess.run(command, check=True, **kwargs)
+
+
+def patch_runtime_project(project_dir: Path) -> None:
+    """Patch copied inputs so stale Kaggle dataset versions still run safely."""
+    requirements_path = project_dir / "requirements.txt"
+    if requirements_path.exists():
+        text = requirements_path.read_text(encoding="utf-8")
+        lines = []
+        changed = False
+        for line in text.splitlines():
+            if line.startswith("torch>=") and "<2.6.0" not in line:
+                lines.append("torch>=2.3.0,<2.6.0")
+                changed = True
+            elif line.startswith("sentence-transformers") and "<4.0.0" not in line:
+                lines.append("sentence-transformers>=3.0.0,<4.0.0")
+                changed = True
+            else:
+                lines.append(line)
+        if changed:
+            requirements_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            print("Patched requirements.txt Kaggle-safe ML dependency pins", flush=True)
+
+    script_path = project_dir / "scripts" / "run_kaggle_full_artifacts.sh"
+    if script_path.exists():
+        text = script_path.read_text(encoding="utf-8")
+        install_line = '  run_step install_requirements "$PYTHON_BIN" -m pip install -q -r requirements.txt\n'
+        uninstall_line = (
+            '  run_step uninstall_incompatible_torch_extras "$PYTHON_BIN" '
+            "-m pip uninstall -y torchvision torchaudio torchcodec\n"
+        )
+        if uninstall_line not in text and install_line in text:
+            script_path.write_text(text.replace(install_line, install_line + uninstall_line, 1), encoding="utf-8")
+            print("Patched run_kaggle_full_artifacts.sh to remove incompatible torchvision/torchaudio", flush=True)
+
+
+def find_uploaded_project(kaggle_input: Path) -> Path | None:
+    """Return the directory containing the recommender source tree."""
+    for src_dir in sorted(kaggle_input.rglob("src")):
+        if src_dir.is_dir() and (src_dir / "recommender").exists():
+            return src_dir.parent
+    return None
+
+
+def find_project_zip(kaggle_input: Path) -> Path | None:
+    """Return a zip archive that contains the project source tree."""
+    for zip_path in sorted(kaggle_input.rglob("*.zip")):
+        try:
+            with zipfile.ZipFile(zip_path) as archive:
+                if any(name.startswith("src/recommender/") for name in archive.namelist()):
+                    return zip_path
+        except zipfile.BadZipFile:
+            continue
+    return None
+
+
+def copy_project() -> Path:
+    project_dir = WORKDIR / "movierec3"
+    if project_dir.exists():
+        return project_dir
+
+    kaggle_input = Path("/kaggle/input")
+    if kaggle_input.exists():
+        print("Kaggle input contents (first 40):", flush=True)
+        for path in sorted(kaggle_input.rglob("*"))[:40]:
+            print(f"  {path}", flush=True)
+
+        uploaded_project = find_uploaded_project(kaggle_input)
+        if uploaded_project is not None:
+            print(f"Found uploaded project at: {uploaded_project}", flush=True)
+            run(["cp", "-r", str(uploaded_project), str(project_dir)])
+            return project_dir
+
+        project_zip = find_project_zip(kaggle_input)
+        if project_zip is not None:
+            print(f"Found uploaded project zip at: {project_zip}", flush=True)
+            project_dir.mkdir(parents=True, exist_ok=True)
+            with zipfile.ZipFile(project_zip) as archive:
+                archive.extractall(project_dir)
+            return project_dir
+
+        datasets = [path for path in sorted(kaggle_input.iterdir()) if path.is_dir()]
+        if datasets:
+            print(f"Fallback: copying {datasets[0]} to {project_dir}", flush=True)
+            run(["cp", "-r", str(datasets[0]), str(project_dir)])
+            return project_dir
+
+    print("ERROR: project_dir not found and no uploaded project could be located.", flush=True)
+    print("Working dir contents:", flush=True)
+    for path in sorted(WORKDIR.rglob("*"))[:40]:
+        print(f"  {path}", flush=True)
+    raise SystemExit(1)
+
+
+def ensure_download_zip(project_dir: Path) -> None:
+    """Expose the shell pipeline zip under the submit script's documented name."""
+    shell_zip = project_dir / "artifacts_and_reports_full.zip"
+    if shell_zip.exists():
+        shutil.copy2(shell_zip, OUTPUT_ZIP)
+        print(f"Copied {shell_zip} -> {OUTPUT_ZIP}", flush=True)
+        return
+
+    print("WARNING: artifacts_and_reports_full.zip was not produced; creating fallback zip.", flush=True)
+    zip_paths = [
+        project_dir / "artifacts" / "movielens_pdf_clean",
+        project_dir / "artifacts" / "letterboxd_pdf_clean",
+        project_dir / "artifacts" / "movielens_strong",
+        project_dir / "artifacts" / "letterboxd_strong",
+        project_dir / "reports" / "comparison_sbert_pdf_clean_both",
+        project_dir / "reports" / "comparison_sbert_strong_both",
+        project_dir / "logs",
+    ]
+    with zipfile.ZipFile(OUTPUT_ZIP, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for base_path in zip_paths:
+            if not base_path.exists():
+                print(f"  Skipped missing path: {base_path}", flush=True)
+                continue
+            for file_path in base_path.rglob("*"):
+                if file_path.is_file():
+                    archive.write(file_path, file_path.relative_to(project_dir))
+            print(f"  Zipped: {base_path.relative_to(project_dir)}", flush=True)
+    print(f"Created fallback output zip: {OUTPUT_ZIP}", flush=True)
 
 
 def main() -> None:
-    project_dir = WORKDIR / "movierec3"
-
-    # Detect if running from Kaggle dataset input
-    kaggle_input = Path("/kaggle/input")
-    if kaggle_input.exists():
-        print("Kaggle input contents (first 30):")
-        for p in sorted(kaggle_input.rglob("*"))[:30]:
-            print(f"  {p}")
-
-        # Find the directory that contains src/ (could be nested)
-        src_dir = None
-        for p in kaggle_input.rglob("src"):
-            if p.is_dir() and (p / "recommender").exists():
-                src_dir = p.parent
-                break
-
-        if src_dir and not project_dir.exists():
-            print(f"Found project at: {src_dir}")
-            run(["cp", "-r", str(src_dir), str(project_dir)])
-        elif not project_dir.exists():
-            # Fallback: just copy the first dataset dir
-            datasets = [d for d in kaggle_input.iterdir() if d.is_dir()]
-            if datasets:
-                print(f"Fallback: copying {datasets[0]} to {project_dir}")
-                run(["cp", "-r", str(datasets[0]), str(project_dir)])
-
-    if not project_dir.exists():
-        print("ERROR: project_dir not found at", project_dir)
-        print("Working dir contents:")
-        for p in sorted(WORKDIR.rglob("*"))[:30]:
-            print(f"  {p}")
-        sys.exit(1)
-
+    project_dir = copy_project()
     os.chdir(project_dir)
-    print(f"Working directory: {os.getcwd()}")
-    print(f"Contents: {sorted(os.listdir('.'))}")
+    print(f"Working directory: {project_dir}", flush=True)
+    print(f"Contents: {sorted(os.listdir('.'))}", flush=True)
+
     os.environ["PYTHONPATH"] = f"{project_dir / 'src'}:{project_dir}"
     os.environ["PYTHONUNBUFFERED"] = "1"
+    os.environ.setdefault("PYTHON_BIN", sys.executable)
+    os.environ.setdefault("INSTALL_DEPS", "1")
 
-    # Install dependencies
-    run([sys.executable, "-m", "pip", "install", "-q", "-r", "requirements.txt"])
-    if Path("requirements-optional.txt").exists():
-        # Install optional deps one-by-one (some may fail, e.g. lightfm needs C compiler)
-        with open("requirements-optional.txt") as f:
-            for line in f:
-                pkg = line.strip()
-                if pkg and not pkg.startswith("#"):
-                    try:
-                        run([sys.executable, "-m", "pip", "install", "-q", pkg])
-                    except Exception as e:
-                        print(f"WARNING: Failed to install optional dep '{pkg}': {e}")
+    patch_runtime_project(project_dir)
+    run([sys.executable, "-m", "pip", "uninstall", "-y", "torchvision", "torchaudio", "torchcodec"])
 
-    # Check CUDA
-    run([sys.executable, "-c", """
-import torch
-print('torch:', torch.__version__)
-print('cuda:', torch.cuda.is_available())
-if torch.cuda.is_available():
-    print('gpu:', torch.cuda.get_device_name(0))
-else:
-    print('WARNING: No GPU, will use CPU (slower)')
-"""])
+    script_path = project_dir / "scripts" / "run_kaggle_full_artifacts.sh"
+    if not script_path.exists():
+        raise SystemExit(f"Missing pipeline script: {script_path}")
 
-    device = "cuda" if _has_cuda() else "cpu"
-    epochs = 100 if device == "cuda" else 20
-    batch_size = 8192 if device == "cuda" else 4096
-    dim = 128
-    grid_step = 0.05
-    # Use tfidf to avoid CUDA/SBERT kernel mismatch on Kaggle
-    content_backend = "tfidf"
-
-    # ---- PDF-Clean Artifacts ----
-    print("\n" + "=" * 60)
-    print("PHASE 1: Train PDF-Clean Artifacts")
-    print("=" * 60)
-
-    # MovieLens PDF-clean
-    try:
-        run([
-            sys.executable, "-u", "scripts/train.py",
-            "--raw-dir", "data/raw/ml-latest-small",
-            "--enriched-catalog", "data/processed/movie_catalog_enriched.parquet",
-            "--artifacts-dir", "artifacts/movielens_pdf_clean",
-            "--content-backend", content_backend,
-            "--train-lightgcn", "--train-two-tower",
-            "--lightgcn-dim", str(dim), "--lightgcn-layers", "3",
-            "--epochs", str(epochs), "--batch-size", str(batch_size),
-            "--device", device, "--hybrid-grid-step", str(grid_step),
-            "--min-rating", "4.0",
-        ])
-    except Exception as e:
-        print(f"WARNING: MovieLens PDF-clean failed: {e}")
-
-    # Letterboxd PDF-clean
-    try:
-        run([
-            sys.executable, "-u", "scripts/train.py",
-            "--raw-dir", "data/processed/letterboxd",
-            "--enriched-catalog", "data/processed/letterboxd/movie_catalog_enriched.parquet",
-            "--artifacts-dir", "artifacts/letterboxd_pdf_clean",
-            "--content-backend", content_backend,
-            "--train-lightgcn", "--train-two-tower",
-            "--lightgcn-dim", str(dim), "--lightgcn-layers", "3",
-            "--epochs", str(epochs), "--batch-size", str(batch_size),
-            "--device", device, "--hybrid-grid-step", str(grid_step),
-            "--min-rating", "4.0",
-        ])
-    except Exception as e:
-        print(f"WARNING: Letterboxd PDF-clean failed: {e}")
-
-    # ---- Strong Ranker Artifacts ----
-    print("\n" + "=" * 60)
-    print("PHASE 2: Train Strong Ranker Artifacts")
-    print("=" * 60)
-
-    for ds_name, raw_dir, catalog in [
-        ("movielens", "data/raw/ml-latest-small", "data/processed/movie_catalog_enriched.parquet"),
-        ("letterboxd", "data/processed/letterboxd", "data/processed/letterboxd/movie_catalog_enriched.parquet"),
-    ]:
-        try:
-            run([
-                sys.executable, "-u", "scripts/train_strong_hybrid.py",
-                "--dataset", ds_name,
-                "--raw-dir", raw_dir,
-                "--enriched-catalog", catalog,
-                "--artifacts-dir", f"artifacts/{ds_name}_strong",
-                "--content-backend", content_backend,
-                "--ranker", "lightgbm",
-                "--lightgcn-dim", str(dim), "--lightgcn-layers", "3",
-                "--lightgcn-epochs", str(epochs),
-                "--batch-size", str(batch_size),
-                "--device", device,
-                "--max-ease-items", "5000",
-                "--max-ranker-samples", "500000",
-                "--min-rating", "4.0",
-            ])
-        except Exception as e:
-            print(f"WARNING: {ds_name} strong ranker failed: {e}")
-
-    # ---- Comparison Suite ----
-    print("\n" + "=" * 60)
-    print("PHASE 3: Comparison Suite")
-    print("=" * 60)
-
-    # PDF-clean core comparison (both datasets)
-    try:
-        run([
-            sys.executable, "-u", "scripts/compare_models.py",
-            "--dataset", "both",
-            "--movielens-dir", "data/raw/ml-latest-small",
-            "--movielens-enriched-catalog", "data/processed/movie_catalog_enriched.parquet",
-            "--letterboxd-dir", "data/processed/letterboxd",
-            "--letterboxd-enriched-catalog", "data/processed/letterboxd/movie_catalog_enriched.parquet",
-            "--content-backend", content_backend,
-            "--models", "core",
-            "--k", "10",
-            "--epochs", str(epochs),
-            "--mf-dim", str(dim),
-            "--batch-size", str(batch_size),
-            "--device", device,
-            "--hybrid-grid-step", str(grid_step),
-            "--output-dir", "reports/comparison_gpu_core",
-        ])
-    except Exception as e:
-        print(f"WARNING: Core comparison failed: {e}")
-
-    # Strong full comparison (both datasets)
-    try:
-        run([
-            sys.executable, "-u", "scripts/compare_models.py",
-            "--dataset", "both",
-            "--movielens-dir", "data/raw/ml-latest-small",
-            "--movielens-enriched-catalog", "data/processed/movie_catalog_enriched.parquet",
-            "--letterboxd-dir", "data/processed/letterboxd",
-            "--letterboxd-enriched-catalog", "data/processed/letterboxd/movie_catalog_enriched.parquet",
-            "--content-backend", content_backend,
-            "--models", "full",
-            "--k", "10",
-            "--epochs", str(epochs),
-            "--mf-dim", str(dim),
-            "--batch-size", str(batch_size),
-            "--device", device,
-            "--max-ease-items", "5000",
-            "--max-slim-items", "3000",
-            "--max-ranker-samples", "500000",
-            "--hybrid-grid-step", str(grid_step),
-            "--output-dir", "reports/comparison_gpu_full",
-        ])
-    except Exception as e:
-        print(f"WARNING: Full comparison failed: {e}")
-
-    # ---- Visualization ----
-    print("\n" + "=" * 60)
-    print("PHASE 4: Embedding Visualization")
-    print("=" * 60)
-
-    for art_dir, out_dir in [
-        ("artifacts/movielens_pdf_clean", "reports/embedding_visualization_movielens"),
-        ("artifacts/letterboxd_pdf_clean", "reports/embedding_visualization_letterboxd"),
-    ]:
-        if Path(art_dir).exists():
-            run([
-                sys.executable, "-u", "scripts/visualize_embeddings.py",
-                "--artifacts-dir", art_dir,
-                "--output-dir", out_dir,
-                "--method", "tsne",
-                "--sample-size", "2500",
-                "--top-genres", "8",
-            ])
-
-    # ---- Audit ----
-    print("\n" + "=" * 60)
-    print("PHASE 5: Audit Artifacts")
-    print("=" * 60)
-    run([sys.executable, "-u", "scripts/audit_artifacts.py"])
-
-    # ---- Zip outputs ----
-    print("\n" + "=" * 60)
-    print("PHASE 6: Zip Outputs")
-    print("=" * 60)
-    zip_paths = [
-        "artifacts/movielens_pdf_clean",
-        "artifacts/letterboxd_pdf_clean",
-        "artifacts/movielens_strong",
-        "artifacts/letterboxd_strong",
-        "reports/comparison_sbert_pdf_clean_both",
-        "reports/comparison_sbert_strong_both",
-        "reports/embedding_visualization_movielens",
-        "reports/embedding_visualization_letterboxd",
-    ]
-    output_zip = WORKDIR / "full_training_outputs.zip"
-    with zipfile.ZipFile(output_zip, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        for base_path in zip_paths:
-            p = Path(base_path)
-            if p.exists():
-                for f in p.rglob("*"):
-                    if f.is_file():
-                        zf.write(f, str(f))
-                print(f"  Zipped: {base_path}")
-            else:
-                print(f"  Skipped (missing): {base_path}")
-
-    print(f"\nAll outputs zipped to: {output_zip}")
-    print("DONE!")
-
-
-def _has_cuda() -> bool:
-    try:
-        import torch
-        return torch.cuda.is_available()
-    except Exception:
-        return False
+    run(["bash", str(script_path)])
+    ensure_download_zip(project_dir)
+    print("DONE!", flush=True)
 
 
 if __name__ == "__main__":

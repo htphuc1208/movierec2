@@ -79,6 +79,42 @@ def parse_movie_id(movie: dict[str, Any]) -> int:
         return 0
 
 
+def get_session_context() -> list[int]:
+    return [int(movie_id) for movie_id in st.session_state.setdefault("session_context", [])]
+
+
+def add_session_movie(movie: dict[str, Any]) -> None:
+    movie_id = parse_movie_id(movie)
+    if movie_id <= 0:
+        return
+    session_ids = st.session_state.setdefault("session_context", [])
+    titles = st.session_state.setdefault("session_movie_titles", {})
+    if movie_id not in session_ids:
+        session_ids.append(movie_id)
+    titles[str(movie_id)] = clean_title(movie.get("title", f"Movie {movie_id}"))
+
+
+def remove_session_movie(movie_id: int) -> None:
+    session_ids = st.session_state.setdefault("session_context", [])
+    st.session_state.session_context = [int(value) for value in session_ids if int(value) != int(movie_id)]
+    st.session_state.setdefault("session_movie_titles", {}).pop(str(int(movie_id)), None)
+
+
+def toggle_session_movie(movie: dict[str, Any]) -> None:
+    movie_id = parse_movie_id(movie)
+    if movie_id <= 0:
+        return
+    if movie_id in get_session_context():
+        remove_session_movie(movie_id)
+    else:
+        add_session_movie(movie)
+
+
+def clear_session_context() -> None:
+    st.session_state.session_context = []
+    st.session_state.session_movie_titles = {}
+
+
 def navigate(page: str, movie_id: int | None = None, tags: list[str] | None = None) -> None:
     st.session_state.page = page
     if movie_id is not None:
@@ -92,6 +128,9 @@ def init_state() -> None:
     st.session_state.setdefault("current_user", None)
     st.session_state.setdefault("search_query", "")
     st.session_state.setdefault("current_tags", [])
+    st.session_state.setdefault("session_context", [])
+    st.session_state.setdefault("session_movie_titles", {})
+    st.session_state.setdefault("session_weight", 0.65)
 
 
 def submit_search():
@@ -333,7 +372,18 @@ def render_movie_card(movie: dict[str, Any], key: str, is_row: bool = False) -> 
         st.markdown(html_content, unsafe_allow_html=True)
         
         if movie_id > 0:
-            st.button("Chi tiết", key=f"btn_{key}_{movie_id}", on_click=navigate, args=("detail", movie_id, explanation_tags), use_container_width=True)
+            detail_col, session_col = st.columns([1.2, 0.9])
+            with detail_col:
+                st.button("Chi tiết", key=f"btn_{key}_{movie_id}", on_click=navigate, args=("detail", movie_id, explanation_tags), use_container_width=True)
+            with session_col:
+                in_session = movie_id in get_session_context()
+                st.button(
+                    "Bỏ gu" if in_session else "+ Gu",
+                    key=f"taste_{key}_{movie_id}",
+                    on_click=toggle_session_movie,
+                    args=(movie,),
+                    use_container_width=True,
+                )
         else:
             st.button("Lỗi ID", key=f"btn_err_{key}", disabled=True, use_container_width=True)
 
@@ -350,13 +400,55 @@ def render_movie_row(title: str, movies: list[dict[str, Any]], row_key: str) -> 
             render_movie_card(movie, f"{row_key}_{idx}", is_row=True)
 
 
-def recommend(user_id: int | None, model_name: str, top_k: int = 15) -> list[dict[str, Any]]:
+def render_session_panel() -> None:
+    session_ids = get_session_context()
+    if not session_ids:
+        st.caption("Mẹo: bấm + Gu trên vài phim để nhận gợi ý theo phiên hiện tại, kể cả khi đang ở Guest.")
+        return
+
+    titles = st.session_state.setdefault("session_movie_titles", {})
+    with st.container(border=True):
+        title_col, slider_col, clear_col = st.columns([2.5, 2, 0.8], vertical_alignment="center")
+        with title_col:
+            st.markdown(f"**Gu phiên hiện tại** · {len(session_ids)} phim")
+            st.caption("Các phim này sẽ điều chỉnh gợi ý ngay trong phiên hiện tại.")
+        with slider_col:
+            st.session_state.session_weight = st.slider(
+                "Mức ưu tiên gu phiên",
+                min_value=0.0,
+                max_value=1.0,
+                value=float(st.session_state.get("session_weight", 0.65)),
+                step=0.05,
+                help="0 = ưu tiên lịch sử user, 1 = ưu tiên các phim vừa chọn trong phiên.",
+            )
+        with clear_col:
+            st.button("Xóa gu", on_click=clear_session_context, use_container_width=True)
+
+        columns = st.columns(min(4, len(session_ids)))
+        for idx, movie_id in enumerate(session_ids):
+            with columns[idx % len(columns)]:
+                st.markdown(f"**{safe_text(titles.get(str(movie_id), f'Movie {movie_id}'))}**")
+                st.button("Bỏ", key=f"session_remove_{movie_id}", on_click=remove_session_movie, args=(movie_id,), use_container_width=True)
+
+
+def recommend(
+    user_id: int | None,
+    model_name: str,
+    top_k: int = 15,
+    session_context: list[int] | None = None,
+    session_weight: float | None = None,
+) -> list[dict[str, Any]]:
+    if session_context is None:
+        session_context = get_session_context()
+    if session_weight is None:
+        session_weight = float(st.session_state.get("session_weight", 0.65))
     data = api_post(
         "/recommend",
         {
             "user_id": user_id,
             "top_k": top_k,
-            "session_context": [],
+            "session_context": session_context,
+            "session_weight": session_weight,
             "exclude_seen": True,
             "model_name": model_name,
         },
@@ -366,30 +458,40 @@ def recommend(user_id: int | None, model_name: str, top_k: int = 15) -> list[dic
 
 def render_home_page() -> None:
     render_hero_banner()
+    render_session_panel()
     
     user_id = st.session_state.current_user
+    session_context = get_session_context()
     
     if user_id is not None:
         col_title, col_model = st.columns([5, 1], vertical_alignment="bottom")
         
         with col_title:
-            st.markdown("<h3 style='margin-top: 15px; margin-bottom: 0;'>Được đề xuất cho bạn</h3>", unsafe_allow_html=True)
+            title = "Được đề xuất cho bạn"
+            if session_context:
+                title += " · điều chỉnh theo gu phiên"
+            st.markdown(f"<h3 style='margin-top: 15px; margin-bottom: 0;'>{title}</h3>", unsafe_allow_html=True)
             
         with col_model:
             model_label = st.selectbox(
                 "Chọn mô hình", 
-                ["Hybrid", "LightGCN", "Content", "Popularity"],
+                ["Hybrid", "LightGCN", "Two-Tower", "Content", "Popularity"],
                 format_func=lambda x: f"Mô hình: {x}", 
                 help="Chọn thuật toán AI để hệ thống tính toán và đưa ra danh sách phim phù hợp nhất với bạn.",
                 label_visibility="collapsed"
             )
         
-        recs = recommend(user_id, model_name=str(model_label).lower(), top_k=15)
+        recs = recommend(user_id, model_name=str(model_label).lower(), top_k=15, session_context=session_context)
         
         render_movie_row("", recs, "recommended")
         
+    elif session_context:
+        st.markdown("<h3 style='margin-top: 15px; margin-bottom: 0;'>Gợi ý theo gu phiên hiện tại</h3>", unsafe_allow_html=True)
+        recs = recommend(None, model_name="hybrid", top_k=15, session_context=session_context)
+        render_movie_row("", recs, "session_recommended")
+
     else:
-        st.info("Chọn user để xem gợi ý cá nhân hóa.")
+        st.info("Chọn user hoặc thêm vài phim vào gu phiên hiện tại để xem gợi ý cá nhân hóa.")
 
     for title, path in [
         ("Phim mới", "/movies/latest"),
@@ -500,6 +602,13 @@ def render_detail_page(movie_id: int | None) -> None:
     with c2:
         st.markdown(f"<h1 style='font-size: 3rem; margin-bottom: 0;'>{title}</h1>", unsafe_allow_html=True)
         st.markdown(f"<p style='color: #F5C518; font-size: 1.3rem; font-weight: bold;'>⭐{score:.1f} <span style='color: #aaa; font-weight: normal; font-size: 1rem;'>({vote_count} đánh giá)</span></p>", unsafe_allow_html=True)
+        in_session = int(movie_id) in get_session_context()
+        st.button(
+            "Bỏ khỏi gu phiên hiện tại" if in_session else "Thêm vào gu phiên hiện tại",
+            key=f"detail_session_{movie_id}",
+            on_click=toggle_session_movie,
+            args=(movie,),
+        )
         st.markdown(f"<p style='font-size: 1.1rem; color: #ddd;'><b>Đạo diễn:</b> {director}</p>", unsafe_allow_html=True)
         st.markdown(f"<p style='font-size: 1.1rem; color: #ddd;'><b>Diễn viên:</b> {cast}</p>", unsafe_allow_html=True)
         st.markdown(f"<p style='font-size: 1.1rem; color: #ddd; margin-bottom: 5px;'><b>Thể loại:</b> {genres}</p>", unsafe_allow_html=True)

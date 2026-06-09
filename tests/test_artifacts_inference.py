@@ -97,3 +97,31 @@ def test_two_tower_artifact_mode(tmp_path) -> None:
     assert recommender.model_info()["has_two_tower"]
     results = recommender.recommend(user_id=1, top_k=1, model_name="two_tower", exclude_seen=False)
     assert results[0]["movie_id"] == 10
+
+
+def test_session_context_uses_two_tower_without_user(tmp_path) -> None:
+    catalog = pd.DataFrame(
+        {
+            "movieId": [10, 11, 12],
+            "title": ["Space One", "Space Followup", "Kitchen Drama"],
+            "genres": ["Sci-Fi", "Sci-Fi", "Drama"],
+            "tmdb_id": [100, 101, 102],
+        }
+    )
+    save_artifact_bundle(
+        tmp_path,
+        catalog=catalog,
+        user_mapping={},
+        item_mapping={10: 0, 11: 1, 12: 2},
+        content_embeddings=np.array([[1, 0], [0, 1], [0, 1]], dtype=np.float32),
+        user_profiles=np.zeros((0, 2), dtype=np.float32),
+        item_popularity=np.array([0.1, 0.1, 0.1], dtype=np.float32),
+        metrics={},
+        hybrid_config={"two_tower_weight": 1.0, "content_weight": 0.0, "popularity_weight": 0.0},
+        two_tower_user_embeddings=np.zeros((0, 2), dtype=np.float32),
+        two_tower_item_embeddings=np.array([[1, 0], [0.95, 0.05], [0, 1]], dtype=np.float32),
+    )
+
+    recommender = HybridArtifactRecommender.from_dir(tmp_path)
+    results = recommender.recommend(top_k=1, session_context=["tmdb_100"], model_name="hybrid")
+    assert results[0]["movie_id"] == 11

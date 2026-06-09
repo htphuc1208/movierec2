@@ -63,7 +63,26 @@ log "RECOMMENDER_VERBOSE_TRAIN: $RECOMMENDER_VERBOSE_TRAIN"
 
 if [[ "${INSTALL_DEPS:-1}" == "1" ]]; then
   run_step install_requirements "$PYTHON_BIN" -m pip install -q -r requirements.txt
-  run_step install_optional_requirements "$PYTHON_BIN" -m pip install -q -r requirements-optional.txt
+  run_step uninstall_incompatible_torch_extras "$PYTHON_BIN" -m pip uninstall -y torchvision torchaudio torchcodec
+  if [[ -f requirements-optional.txt ]]; then
+    while IFS= read -r optional_pkg || [[ -n "$optional_pkg" ]]; do
+      [[ -z "$optional_pkg" || "$optional_pkg" =~ ^# ]] && continue
+      optional_name="install_optional_${optional_pkg//[^A-Za-z0-9_]/_}"
+      optional_log="$LOG_DIR/${optional_name}.log"
+      log "START $optional_name"
+      log "LOG $optional_log"
+      log "CMD $PYTHON_BIN -m pip install -q $optional_pkg"
+      set +e
+      "$PYTHON_BIN" -m pip install -q "$optional_pkg" 2>&1 | tee "$optional_log"
+      optional_status=${PIPESTATUS[0]}
+      set -e
+      if [[ "$optional_status" -ne 0 ]]; then
+        log "WARNING optional dependency failed: $optional_pkg status=$optional_status"
+      else
+        log "DONE $optional_name"
+      fi
+    done < requirements-optional.txt
+  fi
 fi
 
 run_step check_cuda "$PYTHON_BIN" -u -c '
@@ -75,6 +94,14 @@ if not torch.cuda.is_available():
     raise SystemExit("CUDA is not available. Enable Kaggle GPU before running full artifacts.")
 print("device_count:", torch.cuda.device_count())
 print("device_name:", torch.cuda.get_device_name(0))
+probe = torch.tensor([1.0], device="cuda")
+print("cuda_probe:", float((probe + 1).cpu()[0]))
+'
+
+run_step check_sentence_transformers "$PYTHON_BIN" -u -c '
+import sentence_transformers
+
+print("sentence_transformers:", sentence_transformers.__version__)
 '
 
 MOVIELENS_DIR="${MOVIELENS_DIR:-data/raw/ml-latest-small}"

@@ -194,15 +194,17 @@ class HybridArtifactRecommender:
         user_id: int | None = None,
         top_k: int = 10,
         session_context: Iterable[str | int] | None = None,
+        session_weight: float = 0.65,
         exclude_seen: bool = True,
         model_name: str = "hybrid",
     ) -> list[dict]:
         top_k = max(1, min(int(top_k), 100))
+        session_weight = float(max(0.0, min(1.0, session_weight)))
         session_item_indices = self._context_to_item_indices(session_context)
-        content_scores = self._content_scores(user_id, session_item_indices)
+        content_scores = self._content_scores(user_id, session_item_indices, session_weight=session_weight)
         popularity_scores = self.bundle.item_popularity.astype(np.float32)
         cf_scores, has_cf = self._cf_scores(user_id)
-        two_tower_scores, has_two_tower = self._two_tower_scores(user_id)
+        two_tower_scores, has_two_tower = self._two_tower_scores(user_id, session_item_indices, session_weight=session_weight)
         strong_scores, has_strong = self._strong_ranker_scores(user_id, allow_session=not session_item_indices)
         mode = self._normalise_model_name(model_name)
 
@@ -241,8 +243,8 @@ class HybridArtifactRecommender:
             if np.isfinite(scores[idx])
         ]
 
-    def _content_scores(self, user_id: int | None, session_item_indices: list[int]) -> np.ndarray:
-        profile = self._user_profile(user_id, session_item_indices)
+    def _content_scores(self, user_id: int | None, session_item_indices: list[int], session_weight: float = 0.65) -> np.ndarray:
+        profile = self._user_profile(user_id, session_item_indices, session_weight=session_weight)
         return (profile @ self.bundle.content_embeddings.T).astype(np.float32)
 
     def _cf_scores(self, user_id: int | None) -> tuple[np.ndarray, bool]:
@@ -258,18 +260,28 @@ class HybridArtifactRecommender:
             scores = (self.bundle.lightgcn_user_embeddings[user_idx] @ self.bundle.lightgcn_item_embeddings.T).astype(np.float32)
         return scores, has_cf
 
-    def _two_tower_scores(self, user_id: int | None) -> tuple[np.ndarray, bool]:
+    def _two_tower_scores(
+        self,
+        user_id: int | None,
+        session_item_indices: list[int] | None = None,
+        session_weight: float = 0.65,
+    ) -> tuple[np.ndarray, bool]:
         scores = np.zeros(len(self.catalog), dtype=np.float32)
-        has_two_tower = (
-            user_id is not None
-            and int(user_id) in self.user_mapping
-            and self.bundle.two_tower_user_embeddings is not None
-            and self.bundle.two_tower_item_embeddings is not None
-        )
-        if has_two_tower:
+        if self.bundle.two_tower_user_embeddings is None or self.bundle.two_tower_item_embeddings is None:
+            return scores, False
+
+        profiles: list[tuple[np.ndarray, float]] = []
+        if user_id is not None and int(user_id) in self.user_mapping:
             user_idx = self.user_mapping[int(user_id)]
-            scores = (self.bundle.two_tower_user_embeddings[user_idx] @ self.bundle.two_tower_item_embeddings.T).astype(np.float32)
-        return scores, has_two_tower
+            profiles.append((self.bundle.two_tower_user_embeddings[user_idx], 1.0 - session_weight if session_item_indices else 1.0))
+        if session_item_indices:
+            profiles.append((self.bundle.two_tower_item_embeddings[session_item_indices].mean(axis=0), session_weight if profiles else 1.0))
+        if not profiles:
+            return scores, False
+
+        profile = self._weighted_profile(profiles)
+        scores = (profile @ self.bundle.two_tower_item_embeddings.T).astype(np.float32)
+        return scores, True
 
     def _strong_ranker_scores(self, user_id: int | None, allow_session: bool = True) -> tuple[np.ndarray, bool]:
         scores = np.zeros(len(self.catalog), dtype=np.float32)
@@ -296,10 +308,17 @@ class HybridArtifactRecommender:
         has_two_tower: bool,
     ) -> np.ndarray:
         weights = self.bundle.hybrid_config or {}
-        cf_weight = float(weights.get("cf_weight", 0.45 if has_cf else 0.0))
-        two_tower_weight = float(weights.get("two_tower_weight", 0.0 if not has_two_tower else 0.35))
+        cf_weight = float(weights.get("cf_weight", 0.45 if has_cf else 0.0)) if has_cf else 0.0
+        two_tower_weight = float(weights.get("two_tower_weight", 0.0 if not has_two_tower else 0.35)) if has_two_tower else 0.0
         content_weight = float(weights.get("content_weight", 0.45 if has_cf else 0.85))
         popularity_weight = float(weights.get("popularity_weight", 0.10 if has_cf else 0.15))
+        total = cf_weight + two_tower_weight + content_weight + popularity_weight
+        if total <= 1e-8:
+            content_weight, total = 1.0, 1.0
+        cf_weight /= total
+        two_tower_weight /= total
+        content_weight /= total
+        popularity_weight /= total
         return (
             cf_weight * minmax(cf_scores)
             + two_tower_weight * minmax(two_tower_scores)
@@ -326,20 +345,35 @@ class HybridArtifactRecommender:
                 indices.append(title_idx)
         return sorted(set(indices))
 
-    def _user_profile(self, user_id: int | None, session_item_indices: list[int]) -> np.ndarray:
-        profiles = []
+    def _user_profile(self, user_id: int | None, session_item_indices: list[int], session_weight: float = 0.65) -> np.ndarray:
+        profiles: list[tuple[np.ndarray, float]] = []
         if user_id is not None and int(user_id) in self.user_mapping:
-            profiles.append(self.bundle.user_profiles[self.user_mapping[int(user_id)]])
+            profiles.append((self.bundle.user_profiles[self.user_mapping[int(user_id)]], 1.0 - session_weight if session_item_indices else 1.0))
         if session_item_indices:
-            profiles.append(self.bundle.content_embeddings[session_item_indices].mean(axis=0))
+            profiles.append((self.bundle.content_embeddings[session_item_indices].mean(axis=0), session_weight if profiles else 1.0))
         if not profiles:
             popularity_profile = np.average(
                 self.bundle.content_embeddings,
                 axis=0,
                 weights=np.maximum(self.bundle.item_popularity, 1e-6),
             )
-            profiles.append(popularity_profile)
-        profile = np.mean(np.vstack(profiles), axis=0, keepdims=True)
+            profiles.append((popularity_profile, 1.0))
+        return self._weighted_profile(profiles)
+
+    @staticmethod
+    def _weighted_profile(profiles: list[tuple[np.ndarray, float]]) -> np.ndarray:
+        weighted = []
+        weights = []
+        for vector, weight in profiles:
+            weight = float(max(0.0, weight))
+            if weight <= 0.0:
+                continue
+            weighted.append(np.asarray(vector, dtype=np.float32) * weight)
+            weights.append(weight)
+        if not weighted:
+            weighted.append(np.asarray(profiles[0][0], dtype=np.float32))
+            weights.append(1.0)
+        profile = np.sum(np.vstack(weighted), axis=0, keepdims=True) / max(float(np.sum(weights)), 1e-8)
         return normalize(profile).astype(np.float32)[0]
 
     def _movie_payload(
