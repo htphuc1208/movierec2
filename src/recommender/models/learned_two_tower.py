@@ -99,6 +99,7 @@ class LearnedTwoTowerRecommender:
             "hidden_dim": self.hidden_dim,
             "epochs": self.epochs,
             "embedding_attr": self.embedding_attr,
+            "device": self.device,
             "losses": losses,
         }
         return self

@@ -77,7 +77,7 @@ class BPRMFRecommender:
                 print(f"{self.name} epoch {epoch + 1}/{self.epochs} loss={epoch_loss:.6f}", flush=True)
         self.user_embeddings_ = model.user_embedding.weight.detach().cpu().numpy().astype(np.float32)
         self.item_embeddings_ = model.item_embedding.weight.detach().cpu().numpy().astype(np.float32)
-        self.metadata = {"embedding_dim": self.embedding_dim, "epochs": self.epochs, "losses": losses}
+        self.metadata = {"embedding_dim": self.embedding_dim, "epochs": self.epochs, "device": self.device, "losses": losses}
         return self
 
     def score_users(self, user_indices: np.ndarray) -> np.ndarray:
@@ -125,7 +125,13 @@ class LightGCNRecommender:
             users, items = model.propagate()
         self.user_embeddings_ = users.detach().cpu().numpy().astype(np.float32)
         self.item_embeddings_ = items.detach().cpu().numpy().astype(np.float32)
-        self.metadata = {"embedding_dim": self.embedding_dim, "layers": self.num_layers, "epochs": self.epochs, "losses": losses}
+        self.metadata = {
+            "embedding_dim": self.embedding_dim,
+            "layers": self.num_layers,
+            "epochs": self.epochs,
+            "device": self.device,
+            "losses": losses,
+        }
         return self
 
     def score_users(self, user_indices: np.ndarray) -> np.ndarray:
@@ -137,6 +143,7 @@ class ImplicitALSRecommender:
     factors: int = 64
     regularization: float = 0.01
     iterations: int = 20
+    device: str = "cpu"
     name: str = "implicit_als"
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -145,11 +152,22 @@ class ImplicitALSRecommender:
             from implicit.als import AlternatingLeastSquares
         except ImportError as exc:
             raise ModelSkip("implicit is not installed") from exc
-        model = AlternatingLeastSquares(factors=self.factors, regularization=self.regularization, iterations=self.iterations)
-        model.fit(dataset.train_matrix.T.tocsr())
+        use_gpu = self.device.startswith("cuda")
+        model = AlternatingLeastSquares(
+            factors=self.factors,
+            regularization=self.regularization,
+            iterations=self.iterations,
+            use_gpu=use_gpu,
+        )
+        try:
+            model.fit(dataset.train_matrix.T.tocsr())
+        except Exception as exc:
+            if use_gpu:
+                raise ModelSkip(f"implicit ALS GPU backend is unavailable: {exc}") from exc
+            raise
         self.user_factors_ = model.user_factors.astype(np.float32)
         self.item_factors_ = model.item_factors.astype(np.float32)
-        self.metadata = {"factors": self.factors, "iterations": self.iterations}
+        self.metadata = {"factors": self.factors, "iterations": self.iterations, "device": "cuda" if use_gpu else "cpu"}
         return self
 
     def score_users(self, user_indices: np.ndarray) -> np.ndarray:
@@ -245,7 +263,7 @@ class NeuMFRecommender:
                 print(f"{self.name} epoch {epoch + 1}/{self.epochs} loss={epoch_loss:.6f}", flush=True)
         self.model_ = model
         self.num_items_ = dataset.num_items
-        self.metadata = {"embedding_dim": self.embedding_dim, "epochs": self.epochs, "losses": losses}
+        self.metadata = {"embedding_dim": self.embedding_dim, "epochs": self.epochs, "device": self.device, "losses": losses}
         return self
 
     def score_users(self, user_indices: np.ndarray) -> np.ndarray:

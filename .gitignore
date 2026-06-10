@@ -9,10 +9,13 @@ __pycache__/
 build/
 
 # Large data files - keep .gitkeep placeholders
-data/raw/*
-data/processed/*
-!data/raw/.gitkeep
-!data/processed/.gitkeep
+# data/raw/*
+# data/processed/*
+# !data/raw/.gitkeep
+# !data/processed/.gitkeep
+# data/letterboxd/_new_crawl/
+# data/letterboxd/data/
+# data/letterboxd/raw.rar
 
 # Artifacts - keep .gitkeep placeholder
 artifacts/*

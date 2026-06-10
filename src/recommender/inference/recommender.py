@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import normalize
 
-from recommender.eval.metrics import minmax, top_k_from_scores
+from recommender.eval.metrics import minmax
 from recommender.inference.artifacts import ArtifactBundle, load_artifact_bundle
 from recommender.inference.ratings_store import SidecarRatingStore
 
@@ -27,7 +27,7 @@ class HybridArtifactRecommender:
         self.user_mapping = bundle.user_mapping
         self.index_to_movie_id = {idx: movie_id for movie_id, idx in self.item_mapping.items()}
         self.tmdb_to_item = self._build_tmdb_index(self.catalog)
-        self._title_to_item = {str(row.title).lower(): int(row.item_idx) for row in self.catalog.itertuples(index=False)}
+        self._title_to_item = self._build_title_index(self.catalog)
         self.strong_ranker = None
         self.strong_ranker_error = ""
         self._load_strong_ranker()
@@ -48,8 +48,21 @@ class HybridArtifactRecommender:
                 tmdb_id = int(value)
             except (TypeError, ValueError):
                 continue
+            if str(tmdb_id) in result:
+                continue
             result[str(tmdb_id)] = idx
             result[f"tmdb_{tmdb_id}"] = idx
+        return result
+
+    @classmethod
+    def _build_title_index(cls, catalog: pd.DataFrame) -> dict[str, int]:
+        result: dict[str, int] = {}
+        for row in catalog.itertuples(index=False):
+            item_idx = int(row.item_idx)
+            raw_title = str(getattr(row, "title", ""))
+            for key in {raw_title.strip().lower(), cls._normalise_title(raw_title)}:
+                if key:
+                    result.setdefault(key, item_idx)
         return result
 
     def users(self) -> list[int]:
@@ -84,7 +97,9 @@ class HybridArtifactRecommender:
             pattern = re.escape(query)
             mask = catalog["title"].astype(str).str.contains(pattern, case=False, na=False, regex=True)
             catalog = catalog.loc[mask]
-        return [self._movie_payload(int(row.item_idx)) for row in catalog.head(limit).itertuples(index=False)]
+        top_k = max(1, min(int(limit), 100))
+        item_indices = self._unique_item_indices([int(row.item_idx) for row in catalog.itertuples(index=False)], top_k)
+        return [self._movie_payload(idx) for idx in item_indices]
 
     def movie_detail(self, movie_id: int | str) -> dict | None:
         item_idx = self._movie_id_to_item_idx(movie_id)
@@ -98,8 +113,8 @@ class HybridArtifactRecommender:
             return []
         embeddings = normalize(self.bundle.content_embeddings.astype(np.float32))
         scores = embeddings[item_idx] @ embeddings.T
-        scores[item_idx] = -np.inf
-        top_indices = top_k_from_scores(scores, max(1, min(int(top_k), 100)))
+        self._mask_item_indices_and_duplicates(scores, {item_idx})
+        top_indices = self._top_unique_indices_from_scores(scores, top_k)
         return [
             self._movie_payload(idx, score=float(scores[idx]), explanation_tags=self._similarity_explanations(item_idx, idx))
             for idx in top_indices
@@ -153,7 +168,7 @@ class HybridArtifactRecommender:
             ),
             reverse=True,
         )
-        return [self._movie_payload(idx) for idx in candidates[: max(1, min(int(top_k), 100))]]
+        return [self._movie_payload(idx) for idx in self._unique_item_indices(candidates, max(1, min(int(top_k), 100)))]
 
     def user_history(self, user_id: int, rating_store: SidecarRatingStore | None = None, top_k: int = 15) -> list[dict]:
         top_k = max(1, min(int(top_k), 100))
@@ -169,9 +184,8 @@ class HybridArtifactRecommender:
                 payload["user_rating"] = float(rating["rating"])
                 payload["rating_timestamp"] = int(rating["timestamp"])
                 payload["history_source"] = "sidecar"
-                results.append(payload)
                 seen.add(item_idx)
-                if len(results) >= top_k:
+                if self._append_unique_payload(results, payload, top_k):
                     return results
 
         user_idx = self.user_mapping.get(int(user_id))
@@ -184,8 +198,7 @@ class HybridArtifactRecommender:
             payload = self._movie_payload(item_idx)
             payload["user_rating"] = None
             payload["history_source"] = "train"
-            results.append(payload)
-            if len(results) >= top_k:
+            if self._append_unique_payload(results, payload, top_k):
                 break
         return results
 
@@ -229,9 +242,9 @@ class HybridArtifactRecommender:
             watched = self.bundle.hybrid_config.get("train_user_items", {}).get(str(user_idx), [])
             blocked.update(int(item) for item in watched)
         if blocked:
-            scores[list(blocked)] = -np.inf
+            self._mask_item_indices_and_duplicates(scores, blocked)
 
-        top_indices = top_k_from_scores(scores, top_k)
+        top_indices = self._top_unique_indices_from_scores(scores, top_k)
         return [
             self._movie_payload(
                 idx,
@@ -426,7 +439,79 @@ class HybridArtifactRecommender:
     def _rank_catalog(self, top_k: int, key) -> list[dict]:
         item_indices = list(range(len(self.catalog)))
         item_indices.sort(key=key, reverse=True)
-        return [self._movie_payload(idx) for idx in item_indices[: max(1, min(int(top_k), 100))]]
+        return [self._movie_payload(idx) for idx in self._unique_item_indices(item_indices, max(1, min(int(top_k), 100)))]
+
+    def _top_unique_indices_from_scores(self, scores: np.ndarray, top_k: int) -> list[int]:
+        top_k = max(1, min(int(top_k), 100))
+        if scores.size == 0:
+            return []
+        finite_idx = np.flatnonzero(np.isfinite(scores))
+        if finite_idx.size == 0:
+            return []
+        ordered = finite_idx[np.argsort(-scores[finite_idx], kind="mergesort")]
+        return self._unique_item_indices(ordered, top_k)
+
+    def _unique_item_indices(self, item_indices: Iterable[int], limit: int) -> list[int]:
+        seen_keys: set[tuple[str, str]] = set()
+        results: list[int] = []
+        for raw_idx in item_indices:
+            item_idx = int(raw_idx)
+            if item_idx < 0 or item_idx >= len(self.catalog):
+                continue
+            key = self._dedupe_key(item_idx)
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            results.append(item_idx)
+            if len(results) >= limit:
+                break
+        return results
+
+    def _mask_item_indices_and_duplicates(self, scores: np.ndarray, item_indices: Iterable[int]) -> None:
+        blocked_keys = {
+            self._dedupe_key(int(item_idx))
+            for item_idx in item_indices
+            if 0 <= int(item_idx) < len(self.catalog)
+        }
+        if not blocked_keys:
+            return
+        for item_idx in range(len(self.catalog)):
+            if self._dedupe_key(item_idx) in blocked_keys:
+                scores[item_idx] = -np.inf
+
+    def _append_unique_payload(self, results: list[dict], payload: dict, limit: int) -> bool:
+        key = self._payload_dedupe_key(payload)
+        if key not in {self._payload_dedupe_key(item) for item in results}:
+            results.append(payload)
+        return len(results) >= limit
+
+    def _dedupe_key(self, item_idx: int) -> tuple[str, str]:
+        row = self.catalog.iloc[item_idx]
+        tmdb_id = self._optional_int(row.get("tmdb_id"))
+        if tmdb_id is not None:
+            return ("tmdb", str(tmdb_id))
+        title = self._normalise_title(str(row.get("title", "")))
+        release_year = self._release_year(item_idx)
+        if title:
+            return ("title_year", f"{title}|{release_year or ''}")
+        movie_id = int(row.get("movieId", self.index_to_movie_id.get(item_idx, item_idx)))
+        return ("movie", str(movie_id))
+
+    @classmethod
+    def _payload_dedupe_key(cls, payload: dict) -> tuple[str, str]:
+        tmdb_id = payload.get("tmdb_id")
+        if tmdb_id is not None:
+            return ("tmdb", str(tmdb_id))
+        title = cls._normalise_title(str(payload.get("title", "")))
+        year = payload.get("release_year") or payload.get("year") or ""
+        if title:
+            return ("title_year", f"{title}|{year}")
+        return ("movie", str(payload.get("movie_id") or payload.get("movieId") or ""))
+
+    @staticmethod
+    def _normalise_title(title: str) -> str:
+        text = re.sub(r"\s*\(\d{4}\)\s*$", "", str(title).strip().lower())
+        return re.sub(r"\s+", " ", text)
 
     def _numeric(self, item_idx: int, field: str) -> float:
         return float(self._json_scalar(self.catalog.iloc[item_idx].get(field, 0.0)) or 0.0)

@@ -37,8 +37,11 @@ def patch_runtime_project(project_dir: Path) -> None:
             if line.startswith("torch>=") and "<2.6.0" not in line:
                 lines.append("torch>=2.3.0,<2.6.0")
                 changed = True
-            elif line.startswith("sentence-transformers") and "<4.0.0" not in line:
-                lines.append("sentence-transformers>=3.0.0,<4.0.0")
+            elif line.startswith("sentence-transformers") and "<3.5.0" not in line:
+                lines.append("sentence-transformers>=3.0.0,<3.5.0")
+                changed = True
+            elif line.startswith("transformers") and "<5.0.0" not in line:
+                lines.append("transformers>=4.41.0,<5.0.0")
                 changed = True
             else:
                 lines.append(line)

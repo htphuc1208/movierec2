@@ -31,6 +31,12 @@ def parse_args() -> argparse.Namespace:
                         help="Kaggle username/owner")
     parser.add_argument("--kernel-slug", default="movierec3-full-training")
     parser.add_argument("--kernel-title", default="MovieRec3 Full Training")
+    parser.add_argument(
+        "--kernel-file",
+        type=Path,
+        default=PROJECT_ROOT / "kaggle" / "full_training_kernel.py",
+        help="Kernel script to submit. Defaults to the full training kernel.",
+    )
     parser.add_argument("--dataset-slug", default="movierec3-input")
     parser.add_argument("--skip-dataset-upload", action="store_true",
                         help="Skip dataset upload, assume already uploaded")
@@ -108,16 +114,17 @@ def stage_kernel(args: argparse.Namespace, staging_dir: Path, dataset_source: st
     if not args.username:
         raise RuntimeError("Missing --username or KAGGLE_USERNAME")
 
-    # Copy kernel script
-    shutil.copy2(
-        PROJECT_ROOT / "kaggle" / "full_training_kernel.py",
-        staging_dir / "full_training_kernel.py",
-    )
+    kernel_file = args.kernel_file
+    if not kernel_file.is_absolute():
+        kernel_file = PROJECT_ROOT / kernel_file
+    if not kernel_file.exists():
+        raise RuntimeError(f"Missing kernel file: {kernel_file}")
+    shutil.copy2(kernel_file, staging_dir / kernel_file.name)
 
     metadata = {
         "id": f"{args.username}/{args.kernel_slug}",
         "title": args.kernel_title,
-        "code_file": "full_training_kernel.py",
+        "code_file": kernel_file.name,
         "language": "python",
         "kernel_type": "script",
         "is_private": True,

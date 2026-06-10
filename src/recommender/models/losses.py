@@ -22,24 +22,25 @@ def sample_bpr_triplets(
         raise ValueError("No users are eligible for BPR sampling")
 
     # mang ket qua, users, positives, negatives, moi mang co do dai bang num_samples
-    users = np.empty(num_samples, dtype=np.int64)
+    eligible = np.asarray(eligible_users, dtype=np.int64)
+    users = rng.choice(eligible, size=num_samples, replace=True).astype(np.int64, copy=False)
     positives = np.empty(num_samples, dtype=np.int64)
-    negatives = np.empty(num_samples, dtype=np.int64)
+    negatives = rng.integers(0, num_items, size=num_samples, dtype=np.int64)
 
-    for idx in range(num_samples):
-        # sample user ngau nhien tu eligible_users
-        user = int(rng.choice(eligible_users))
-        # sample positive item tu tap item da tuong tac voi user
-        positives_for_user = tuple(user_positive_items[user])
-        positive = int(rng.choice(positives_for_user))
-        # sample negative item tu tap item chua tuong tac voi user 
-        negative = int(rng.integers(0, num_items))
-        while negative in user_positive_items[user]:
-            negative = int(rng.integers(0, num_items))
+    positive_arrays = {
+        int(user): np.fromiter(items, dtype=np.int64, count=len(items))
+        for user, items in user_positive_items.items()
+        if items and len(items) < num_items
+    }
+    for user in np.unique(users):
+        positions = np.flatnonzero(users == user)
+        positive_items = positive_arrays[int(user)]
+        positives[positions] = rng.choice(positive_items, size=len(positions), replace=True)
 
-        users[idx] = user
-        positives[idx] = positive
-        negatives[idx] = negative
+        bad = np.isin(negatives[positions], positive_items, assume_unique=False)
+        while bad.any():
+            negatives[positions[bad]] = rng.integers(0, num_items, size=int(bad.sum()), dtype=np.int64)
+            bad = np.isin(negatives[positions], positive_items, assume_unique=False)
 
     return users, positives, negatives
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import time
 
 import numpy as np
 
@@ -136,21 +137,27 @@ def train_lightgcn_bpr(
 
     verbose = os.getenv("RECOMMENDER_VERBOSE_TRAIN", "0") == "1"
     for epoch in range(epochs):
+        epoch_start = time.perf_counter()
         # sample_bpr_triplets tra ve 3 vector: users, positives, negatives, moi vector co do dai bang samples_per_epoch
         users, positives, negatives = sample_bpr_triplets(user_positive_items, num_items, samples_per_epoch, rng)
         epoch_losses: list[float] = []
         order = rng.permutation(len(users))
+        batch_count = int(np.ceil(len(order) / max(1, batch_size)))
         for start in range(0, len(order), batch_size):
             idx = order[start : start + batch_size]
             batch_users = torch_mod.as_tensor(users[idx], dtype=torch_mod.long, device=device)
             batch_pos = torch_mod.as_tensor(positives[idx], dtype=torch_mod.long, device=device)
             batch_neg = torch_mod.as_tensor(negatives[idx], dtype=torch_mod.long, device=device)
 
-            optimizer.zero_grad()
+            optimizer.zero_grad(set_to_none=True)
+            user_embeddings, item_embeddings = model.propagate()
+            selected_users = user_embeddings[batch_users]
+            pos_items = item_embeddings[batch_pos]
+            neg_items = item_embeddings[batch_neg]
             # score la tich vo huong giua embedding nguoi dung va san pham: 
             # score[u,i] = <embedding_user[u], embedding_item[i]>
-            pos_scores = model(batch_users, batch_pos)
-            neg_scores = model(batch_users, batch_neg)
+            pos_scores = (selected_users * pos_items).sum(dim=-1)
+            neg_scores = (selected_users * neg_items).sum(dim=-1)
             # l2 regularization tren embedding nguoi dung va san pham 
             # trong batch, chia cho kich thuoc batch de co do on dinh hon
             reg = (
@@ -165,6 +172,20 @@ def train_lightgcn_bpr(
         epoch_loss = float(np.mean(epoch_losses))
         losses.append(epoch_loss)
         if verbose:
-            print(f"LightGCN epoch {epoch + 1}/{epochs} loss={epoch_loss:.6f}", flush=True)
+            if str(device).startswith("cuda"):
+                torch_mod.cuda.synchronize()
+                cuda_mem = torch_mod.cuda.max_memory_allocated() / (1024**2)
+                print(
+                    f"LightGCN epoch {epoch + 1}/{epochs} loss={epoch_loss:.6f} "
+                    f"seconds={time.perf_counter() - epoch_start:.2f} batches={batch_count} "
+                    f"cuda_max_mem_mib={cuda_mem:.0f}",
+                    flush=True,
+                )
+            else:
+                print(
+                    f"LightGCN epoch {epoch + 1}/{epochs} loss={epoch_loss:.6f} "
+                    f"seconds={time.perf_counter() - epoch_start:.2f} batches={batch_count}",
+                    flush=True,
+                )
 
     return losses
