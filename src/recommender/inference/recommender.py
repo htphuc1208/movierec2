@@ -122,12 +122,25 @@ class HybridArtifactRecommender:
         ]
 
     def trending_movies(self, top_k: int = 15) -> list[dict]:
+        current_year = 2026
+        
+        def calculate_time_decay_score(item_idx):
+            vote_count = self._numeric(item_idx, "vote_count")
+            
+            release_year = self._numeric(item_idx, "release_year")
+            if not release_year or release_year < 1800:
+                release_year = 2020 
+            
+            years_back = max(0, current_year - int(release_year)) + 1
+            
+            return vote_count / (years_back ** 2)
+
         return self._rank_catalog(
             top_k,
             key=lambda item_idx: (
-                self._numeric(item_idx, "vote_count"),
-                self._numeric(item_idx, "popularity"),
-                self._numeric(item_idx, "vote_average"),
+                calculate_time_decay_score(item_idx),
+                self._numeric(item_idx, "popularity"), 
+                self._numeric(item_idx, "vote_average"), 
             ),
         )
 
