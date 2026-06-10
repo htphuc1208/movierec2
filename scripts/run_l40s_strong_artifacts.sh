@@ -2,13 +2,22 @@
 set -euo pipefail
 
 # Focused L40S runner for the remaining strong-ranker artifacts.
+# It creates .venv when needed, installs GPU dependencies, then trains.
 # Defaults to Letterboxd because it is the larger, stronger target; set
 # RUN_MOVIELENS=1 to also fill artifacts/movielens_strong.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-PYTHON_BIN="${PYTHON_BIN:-python3}"
+SYSTEM_PYTHON="${SYSTEM_PYTHON:-python3}"
+VENV_DIR="${VENV_DIR:-$ROOT_DIR/.venv}"
+if [[ -z "${PYTHON_BIN:-}" ]]; then
+  if [[ ! -x "$VENV_DIR/bin/python" ]]; then
+    "$SYSTEM_PYTHON" -m venv "$VENV_DIR"
+  fi
+  PYTHON_BIN="$VENV_DIR/bin/python"
+fi
+
 export PYTHONPATH="$ROOT_DIR/src:$ROOT_DIR:${PYTHONPATH:-}"
 export PYTHONUNBUFFERED=1
 export RECOMMENDER_VERBOSE_TRAIN="${RECOMMENDER_VERBOSE_TRAIN:-1}"
@@ -47,8 +56,17 @@ run_step() {
 log "Project root: $ROOT_DIR"
 log "Pipeline log: $PIPELINE_LOG"
 log "PYTHONPATH: $PYTHONPATH"
+log "PYTHON_BIN: $PYTHON_BIN"
 
 if [[ "${INSTALL_DEPS:-1}" == "1" ]]; then
+  run_step upgrade_packaging "$PYTHON_BIN" -m pip install -q --upgrade pip setuptools wheel
+  if [[ "${INSTALL_TORCH_CUDA:-1}" == "1" ]]; then
+    TORCH_INDEX_URL="${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu124}"
+    TORCH_VERSION="${TORCH_VERSION:-2.5.1}"
+    run_step install_torch_cuda "$PYTHON_BIN" -m pip install -q --upgrade \
+      --index-url "$TORCH_INDEX_URL" \
+      "torch==$TORCH_VERSION"
+  fi
   run_step install_requirements "$PYTHON_BIN" -m pip install -q --upgrade -r requirements.txt
   run_step uninstall_unneeded_torch_extras "$PYTHON_BIN" -m pip uninstall -y torchcodec torchvision torchaudio
   if [[ -f requirements-optional.txt ]]; then

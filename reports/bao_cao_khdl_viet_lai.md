@@ -47,37 +47,16 @@ Tuy nhiên, chỉ sử dụng một loại tín hiệu thường không đủ. C
 Đề tài tập trung vào bài toán gợi ý phim cá nhân hóa. Với một người dùng hoặc một phiên sử dụng hiện tại, hệ thống cần xếp hạng các phim chưa xem và trả về danh sách những phim phù hợp nhất.
 
 ### Đầu vào
-
-Dữ liệu đầu vào của hệ thống bao gồm:
-
-- Định danh người dùng, nếu người dùng đã có lịch sử trong hệ thống.
-- Lịch sử đánh giá hoặc tương tác giữa người dùng và phim.
-- Thông tin cơ bản của phim từ MovieLens hoặc Letterboxd, gồm định danh phim, tên phim và thể loại ban đầu.
-- Siêu dữ liệu phim từ TMDb, gồm mô tả nội dung, thể loại mở rộng, từ khóa, đạo diễn, diễn viên, biên kịch, hình ảnh poster, năm phát hành, thời lượng, điểm đánh giá cộng đồng, số lượt đánh giá và độ phổ biến.
-- Danh sách phim người dùng chọn trong phiên hiện tại để thể hiện gu xem phim ngắn hạn.
-- Mức ưu tiên của gu phiên hiện tại so với lịch sử dài hạn của người dùng.
-- Số lượng phim cần trả về trong danh sách gợi ý.
+Dữ liệu đầu vào cung cấp cho hệ thống bao gồm thông tin định danh và lịch sử tương tác chi tiết của người dùng trong hệ thống MovieLens hoặc Letterboxd. Lịch sử tương tác ban đầu chứa các thông tin thô như mã phim, tên phim và thể loại cơ sở, sau đó được tích hợp thêm các trường siêu dữ liệu phong phú từ TMDb bao gồm tóm tắt nội dung, thể loại mở rộng, từ khóa phân loại, danh sách đạo diễn, diễn viên, biên kịch, poster trực quan cùng các thống kê cộng đồng như độ phổ biến, lượt đánh giá và điểm trung bình. Ngoài ra, đầu vào của bài toán gợi ý theo phiên còn tiếp nhận các tùy chọn động từ giao diện tương tác, bao gồm danh sách các phim được chọn trong phiên hiện hành của người dùng, mức ưu tiên cân bằng giữa sở thích ngắn hạn với lịch sử dài hạn, và số lượng gợi ý cần truy xuất ($K$).
 
 ### Đầu ra
-
-Kết quả đầu ra là danh sách phim được sắp xếp theo mức độ phù hợp giảm dần. Mỗi phim trong danh sách gợi ý gồm các thông tin:
-
-- Định danh phim trong hệ thống.
-- Định danh phim trên TMDb, nếu có.
-- Tên phim.
-- Điểm phù hợp do hệ thống tính toán.
-- Thể loại phim.
-- Hình ảnh poster.
-- Mô tả nội dung.
-- Đạo diễn.
-- Diễn viên chính.
-- Các nhãn giải thích lý do gợi ý, ví dụ phù hợp với lịch sử đánh giá, cùng thể loại với phim đã chọn trong phiên, hoặc cùng đạo diễn.
+Kết quả đầu ra của hệ thống là một danh sách $K$ bộ phim được sắp xếp theo điểm dự đoán giảm dần của thuật toán. Danh sách này đi kèm đầy đủ thông tin hiển thị bao gồm định danh hệ thống và định danh TMDb, tên phim, điểm số tương thích đã chuẩn hóa, thể loại, poster, nội dung tóm tắt, đạo diễn và diễn viên chính. Đặc biệt, để gia tăng tính minh bạch và độ tin cậy của hệ thống, mỗi gợi ý được gán kèm các nhãn giải thích lý do cụ thể (như tương thích thể loại trong phiên, cùng đạo diễn với phim đã xem, hoặc sự đóng góp nổi bật từ hành vi cộng tác của cộng đồng).
 
 ### Phát biểu bài toán
 
 Cho tập người dùng, tập phim và tập tương tác đã quan sát được, hệ thống cần học cách ước lượng mức độ phù hợp giữa từng người dùng và từng phim chưa xem. Sau đó, hệ thống loại bỏ các phim đã xuất hiện trong lịch sử huấn luyện của người dùng, sắp xếp các phim còn lại theo điểm phù hợp và chọn ra danh sách các phim nên gợi ý.
 
-Trong dự án này, một tương tác được xem là tích cực khi người dùng đánh giá phim từ 4.0 trên thang 5.0 trở lên. Vì vậy, bài toán được tiếp cận theo hướng xếp hạng phim dựa trên phản hồi ngầm: hệ thống tập trung vào việc chọn và sắp xếp những phim nên gợi ý trước, thay vì chỉ dự đoán chính xác điểm đánh giá tuyệt đối.
+Trong dự án này, một tương tác được xem là tích cực khi người dùng đánh giá phim từ 4.0 trên thang 5.0 trở lên. Vì vậy, bài toán được tiếp cận theo hướng xếp hạng phim dựa trên phản hồi ngầm: hệ thống tập trung vào việc chọn và sắp xếp những phim nên gợi ý trước, thay vị chỉ dự đoán chính xác điểm đánh giá tuyệt đối.
 
 ## 1.3. Kịch bản ứng dụng
 
@@ -85,14 +64,7 @@ Hệ thống hỗ trợ ba kịch bản sử dụng chính.
 
 ### Kịch bản 1: Người dùng đã có lịch sử đánh giá
 
-Người dùng đã có lịch sử tương tác trong MovieLens hoặc Letterboxd. Khi người dùng truy cập hệ thống và chọn tài khoản, hệ thống truy xuất các phim mà người dùng từng đánh giá tích cực. Từ lịch sử này, hệ thống kết hợp nhiều nguồn thông tin:
-
-- Quan hệ giữa người dùng và phim trong dữ liệu tương tác.
-- Nội dung và siêu dữ liệu của các phim người dùng đã thích.
-- Biểu diễn học được của người dùng và phim.
-- Độ phổ biến của phim trong tập dữ liệu.
-
-Các nguồn thông tin này được chuẩn hóa và kết hợp để tạo danh sách phim gợi ý cá nhân hóa. Đây là kịch bản phù hợp với người dùng đã có đủ lịch sử, vì hệ thống có thể học được khẩu vị dài hạn của người dùng.
+Người dùng đã có lịch sử tương tác trong MovieLens hoặc Letterboxd. Khi người dùng truy cập hệ thống và chọn tài khoản, hệ thống truy xuất các phim mà người dùng từng đánh giá tích cực. Từ lịch sử này, hệ thống kết hợp nhiều nguồn thông tin như mối quan hệ cộng tác giữa người dùng và phim trong ma trận tương tác, đặc trưng nội dung tĩnh và siêu dữ liệu phim, các vector biểu diễn ẩn (embeddings) được học bởi mô hình sâu, cùng phân phối độ phổ biến của các tác phẩm trong toàn bộ tập dữ liệu. Các nguồn thông tin này được chuẩn hóa và tích hợp thông qua bộ xếp hạng lai để tạo danh sách gợi ý cá nhân hóa tối ưu, giúp học sâu sắc khẩu vị dài hạn của người dùng.
 
 ### Kịch bản 2: Người dùng mới hoặc chưa chọn tài khoản
 
@@ -114,105 +86,41 @@ Kịch bản này giúp người dùng tìm phim theo nhu cầu tự nhiên hơn
 
 ## 1.4. Mục tiêu
 
-Mục tiêu của đề tài là xây dựng và đánh giá một hệ thống gợi ý phim có khả năng cá nhân hóa danh sách phim cho người dùng, đồng thời có thể demo qua giao diện web và dịch vụ gợi ý.
+Mục tiêu cốt lõi của đề tài là nghiên cứu, xây dựng và đánh giá một hệ thống gợi ý phim lai tối ưu, có khả năng cá nhân hóa danh sách gợi ý dựa trên sự kết hợp giữa hành vi người dùng và đặc trưng nội dung, đồng thời triển khai thành công một sản phẩm demo tương tác hoàn chỉnh.
 
-Cụ thể, đề tài hướng tới các mục tiêu sau:
+Để đạt được mục tiêu tổng quát đó, đề tài tập trung giải quyết ba nhóm nhiệm vụ cụ thể. Trước hết, về mặt dữ liệu, đề tài hướng tới việc thiết lập quy trình chuẩn hóa và làm sạch dữ liệu tương tác từ hai nguồn MovieLens và Letterboxd về một cấu trúc thống nhất; chuyển đổi dữ liệu phản hồi tường minh thành phản hồi ngầm thông qua ngưỡng đánh giá tích cực (rating $\geq 4.0$); đồng thời làm giàu catalog phim bằng các thuộc tính siêu dữ liệu phong phú thu thập từ TMDb. Trên cơ sở đó, dữ liệu được biểu diễn dưới dạng ma trận tương tác, đồ thị liên kết hai phía và không gian vector nội dung để sẵn sàng làm đầu vào cho các thuật toán.
 
-1. Xây dựng quy trình xử lý dữ liệu từ MovieLens và Letterboxd theo một cấu trúc thống nhất.
-2. Làm giàu catalog phim bằng siêu dữ liệu từ TMDb.
-3. Chuyển dữ liệu đánh giá thành tập tương tác tích cực dựa trên ngưỡng đánh giá từ 4.0 trở lên.
-4. Biểu diễn dữ liệu dưới nhiều dạng: ma trận tương tác người dùng-phim, đồ thị người dùng-phim và vector nội dung phim.
-5. Triển khai các phương pháp gợi ý nền tảng dựa trên độ phổ biến, láng giềng gần, phân rã ma trận, học xếp hạng và mô hình tuyến tính cho dữ liệu phản hồi ngầm.
-6. Triển khai phương pháp học biểu diễn trên đồ thị người dùng-phim.
-7. Triển khai phương pháp gợi ý dựa trên nội dung và mô hình hai tháp học từ siêu dữ liệu phim.
-8. Xây dựng phương pháp kết hợp nhiều nguồn điểm, gồm điểm từ lịch sử tương tác, điểm từ nội dung, điểm từ biểu diễn học được và điểm độ phổ biến.
-9. Bổ sung cơ chế gợi ý theo gu phiên hiện tại để hỗ trợ người dùng mới và nhu cầu xem phim ngắn hạn.
-10. Đánh giá mô hình bằng các chỉ số xếp hạng trong nhóm 10 gợi ý đầu, gồm độ chính xác, độ bao phủ, chất lượng thứ tự xếp hạng và vị trí xuất hiện của gợi ý đúng đầu tiên.
-11. So sánh kết quả trên hai tập dữ liệu MovieLens và Letterboxd.
-12. Xây dựng hệ thống demo gồm giao diện người dùng, dịch vụ gợi ý và chatbot tư vấn phim.
+Nhiệm vụ tiếp theo liên quan đến xây dựng mô hình gợi ý. Đề tài triển khai và tối ưu hóa một hệ thống mô hình đa dạng: từ các mô hình nền tảng tuyến tính (Popularity, ItemKNN, UserKNN, SVD, EASE) đến các mô hình học máy và học biểu diễn hiện đại (LightGCN trên đồ thị, Two-Tower MLP). Trên nền tảng các mô hình thành phần, đề tài nghiên cứu phương thức lai ghép thông qua bộ xếp hạng học tập (Hybrid Ranker) hoặc kết hợp trọng số để tích hợp đa dạng tín hiệu từ cộng tác, nội dung, biểu diễn ẩn và độ phổ biến của phim. Hơn nữa, hệ thống được trang bị cơ chế gợi ý theo gu phiên hiện tại nhằm giải quyết vấn đề khởi đầu lạnh cho người dùng mới và đáp ứng nhu cầu thay đổi sở thích ngắn hạn.
+
+Cuối cùng, về mặt đánh giá và triển khai, đề tài thực hiện quy trình kiểm thử mô hình nghiêm ngặt bằng các chỉ số xếp hạng danh sách (Precision@k, Recall@k, NDCG@k, MRR) trên cả hai tập dữ liệu MovieLens và Letterboxd, chú trọng phân tích hiệu năng trên lát cắt người dùng thưa và phim đuôi dài. Toàn bộ các kết quả nghiên cứu được đóng gói thành các mô hình suy luận ổn định (artifacts), phục vụ trực tiếp cho hệ thống ứng dụng thực tế gồm backend dịch vụ FastAPI, giao diện Streamlit trực quan, bảng điều khiển phân tích EDA và chatbot tư vấn tiếng Việt hỗ trợ RAG.
 
 ## 1.5. Phạm vi nghiên cứu
 
-Trong khuôn khổ đồ án, phạm vi nghiên cứu được giới hạn như sau.
+Trong khuôn khổ đồ án, phạm vi nghiên cứu được xác định rõ ràng trên bốn khía cạnh cốt lõi bao gồm dữ liệu, bài toán, phương pháp và kiến trúc hệ thống triển khai.
 
-### Về dữ liệu
+**Về khía cạnh dữ liệu:** Nghiên cứu sử dụng tập dữ liệu MovieLens làm tập chuẩn để huấn luyện, căn chỉnh và đánh giá mô hình. Đồng thời, bộ dữ liệu Letterboxd do nhóm tự thu thập được sử dụng để kiểm thử khả năng tổng quát hóa của thuật toán trong môi trường thực tế thưa thớt hơn. Catalog phim được làm giàu thông tin thông qua TMDb API. Quá trình chia tập dữ liệu trên Letterboxd sử dụng phương pháp phân chia ngẫu nhiên ổn định theo từng người dùng do hạn chế về độ tin cậy của dấu thời gian thu thập dữ liệu hành vi. Các thông tin nhạy cảm của người dùng nằm ngoài phạm vi khai thác của đề tài.
 
-- Sử dụng MovieLens làm tập dữ liệu chuẩn để huấn luyện và đánh giá.
-- Sử dụng Letterboxd làm tập dữ liệu thu thập thực tế để đánh giá thêm khả năng tổng quát hóa.
-- Sử dụng TMDb để bổ sung siêu dữ liệu phim.
-- Chỉ dùng các trường dữ liệu phục vụ bài toán gợi ý phim, không khai thác thông tin nhạy cảm của người dùng.
-- Với Letterboxd, thời điểm tương tác dùng trong quá trình chia dữ liệu được tạo ổn định theo từng người dùng, vì thời gian thu thập dữ liệu không phản ánh chính xác thời điểm người dùng xem phim thật.
+**Về khía cạnh bài toán:** Đề tài tập trung giải quyết bài toán gợi ý danh sách phim cá nhân hóa (Top-K recommendation) dựa trên phản hồi ngầm, tối ưu hóa thứ tự ưu tiên của các phim trong danh sách thay vì đi sâu vào bài toán hồi quy dự đoán điểm số đánh giá tuyệt đối. Cơ chế gợi ý theo phiên ngắn hạn được tích hợp để điều phối danh sách gợi ý dựa trên hành vi tương tác tạm thời của người dùng. Các bài toán ngoài lề như dự báo doanh thu phòng vé, phân tích cảm xúc văn bản đánh giá, nhận diện poster phim hay dự báo xu hướng thị trường đều không thuộc phạm vi nghiên cứu.
 
-### Về bài toán
+**Về khía cạnh phương pháp:** Đề tài giới hạn việc nghiên cứu và cài đặt các nhóm thuật toán bao gồm gợi ý dựa trên độ phổ biến, lọc cộng tác cổ điển (KNN, SVD), mô hình tự mã hóa tuyến tính (EASE), học biểu diễn đồ thị tương tác (LightGCN), gợi ý dựa trên nội dung tĩnh (TF-IDF), mạng nơ-ron hai tháp (Two-Tower MLP), và các bộ xếp hạng lai ghép (Weighted Hybrid, Learned Hybrid Ranker). Chatbot hỗ trợ được xây dựng trên cơ chế tìm kiếm tương đồng ngữ nghĩa kết hợp mô hình ngôn ngữ lớn (RAG).
 
-- Tập trung vào bài toán gợi ý danh sách phim phù hợp nhất cho người dùng.
-- Ưu tiên chất lượng xếp hạng danh sách gợi ý hơn là dự đoán chính xác điểm đánh giá tuyệt đối.
-- Có xét đến gợi ý theo phiên hiện tại, tức danh sách phim người dùng vừa chọn trong quá trình sử dụng hệ thống.
-- Không nghiên cứu các bài toán ngoài phạm vi như dự đoán doanh thu, phân loại cảm xúc đánh giá, nhận diện hình ảnh poster hoặc dự báo xu hướng thị trường phim.
-
-### Về phương pháp
-
-Các nhóm phương pháp trong phạm vi đồ án gồm:
-
-- Gợi ý dựa trên độ phổ biến.
-- Lọc cộng tác dựa trên hành vi người dùng.
-- Phân rã ma trận và học xếp hạng.
-- Học biểu diễn trên đồ thị người dùng-phim.
-- Gợi ý dựa trên nội dung phim.
-- Mô hình hai tháp kết hợp người dùng và nội dung phim.
-- Phương pháp kết hợp nhiều nguồn tín hiệu.
-- Chatbot tư vấn phim dựa trên truy xuất thông tin từ catalog.
-
-### Về hệ thống
-
-- Hệ thống phục vụ mục đích học tập, nghiên cứu và demo.
-- Quá trình gợi ý sử dụng các kết quả huấn luyện đã lưu sẵn, không huấn luyện lại khi người dùng gửi yêu cầu.
-- Giao diện demo hỗ trợ tìm kiếm phim, xem chi tiết phim, xem phim tương tự, thêm phim vào gu phiên hiện tại, điều chỉnh mức ưu tiên gu phiên và nhận gợi ý theo người dùng hoặc theo phiên.
-- Không đặt mục tiêu triển khai thương mại, chịu tải lớn hoặc huấn luyện thời gian thực ở quy mô sản phẩm.
+**Về khía cạnh hệ thống:** Hệ thống được phát triển với mục đích học tập, nghiên cứu khoa học và trình diễn công nghệ (demo). Quá trình suy luận gợi ý thời gian thực và chatbot phản hồi dựa hoàn toàn trên việc tải các artifacts đã được huấn luyện offline trước đó, không thực hiện cập nhật trọng số mô hình hoặc huấn luyện lại trực tuyến khi có yêu cầu từ client. Giao diện demo hỗ trợ đầy đủ các thao tác tìm kiếm, xem chi tiết, xem phim tương tự, thiết lập gu phiên và điều chỉnh mức ưu tiên gợi ý. Hệ thống không hướng tới triển khai thương mại quy mô lớn, chịu tải cao hoặc xử lý dữ liệu luồng trực tuyến.
 
 ## 1.6. Đóng góp của đề tài
 
-Đề tài có các đóng góp chính sau.
+Đề tài mang lại những đóng góp cụ thể về dữ liệu, phương pháp nghiên cứu, đánh giá thực nghiệm và triển khai ứng dụng thực tế.
 
-### Đóng góp về dữ liệu
+**Về mặt dữ liệu:** Đề tài đã xây dựng thành công một quy trình thống nhất giúp chuẩn hóa và làm sạch hai nguồn dữ liệu có cấu trúc khác biệt là MovieLens và Letterboxd về cùng một schema phục vụ huấn luyện mô hình. Đồng thời, catalog phim đã được làm giàu thông tin chiều sâu từ TMDb bao gồm tóm tắt, từ khóa, đoàn làm phim và các thuộc tính thống kê cộng đồng, cung cấp một nguồn tri thức hoàn chỉnh cho cả thuật toán gợi ý và chatbot tương tác.
 
-- Chuẩn hóa dữ liệu MovieLens và Letterboxd về cùng cấu trúc phục vụ huấn luyện.
-- Làm giàu thông tin phim bằng siêu dữ liệu từ TMDb, gồm mô tả nội dung, thể loại mở rộng, từ khóa, đạo diễn, diễn viên, poster, năm phát hành và các chỉ số đánh giá cộng đồng.
-- Xây dựng catalog phim đã làm giàu để phục vụ cả huấn luyện, gợi ý, giao diện demo và chatbot.
+**Về mặt phương pháp:** Nghiên cứu đã triển khai và thực hiện so sánh đối chứng một hệ thống thuật toán đa dạng trên cùng một quy trình đánh giá chuẩn. Đề tài đề xuất phương pháp xếp hạng lai kết hợp tối ưu giữa hành vi cộng tác, đặc trưng nội dung tĩnh, biểu diễn nhúng ẩn và độ phổ biến toàn cục. Hơn nữa, việc tích hợp cơ chế gu phiên động cho phép người dùng kiểm soát sự cân bằng sở thích ngắn hạn và lịch sử dài hạn, mở ra hướng giải quyết tự nhiên cho bài toán khởi đầu lạnh. Việc thực hiện ablation study định lượng rõ ràng đóng góp của siêu dữ liệu TMDb trong bối cảnh thưa thớt dữ liệu khác nhau.
 
-### Đóng góp về phương pháp
+**Về mặt thực nghiệm:** Đề tài cung cấp các kết quả đánh giá thực chứng chi tiết trên cả hai tập dữ liệu MovieLens và Letterboxd thông qua các thước đo Top-10 định hướng xếp hạng danh sách. Phân tích thực nghiệm được bóc tách sâu sắc theo các lát cắt đối tượng khác nhau như người dùng thưa lịch sử (sparse users) và phim đuôi dài (long-tail items), làm nổi bật sự đánh đổi thực tiễn giữa độ chính xác toàn cục và độ đa dạng phân phối gợi ý.
 
-- Triển khai và so sánh nhiều nhóm phương pháp gợi ý trên cùng một quy trình đánh giá.
-- Xây dựng phương pháp kết hợp tín hiệu từ lịch sử tương tác, nội dung phim, biểu diễn học được và độ phổ biến.
-- Sử dụng siêu dữ liệu phim để hỗ trợ người dùng mới, gợi ý theo phiên hiện tại và phim ít tương tác.
-- Bổ sung cơ chế điều chỉnh giữa lịch sử dài hạn của người dùng và gu ngắn hạn trong phiên sử dụng.
-- Thực hiện so sánh giữa mô hình có sử dụng và không sử dụng siêu dữ liệu TMDb để đánh giá vai trò của thông tin nội dung.
-
-### Đóng góp về thực nghiệm
-
-- Đánh giá mô hình trên cả MovieLens và Letterboxd.
-- Sử dụng các chỉ số đánh giá phù hợp với bài toán gợi ý danh sách, đặc biệt là chất lượng của 10 gợi ý đầu tiên.
-- Phân tích riêng các nhóm người dùng có ít lịch sử và nhóm phim ít tương tác để hiểu mô hình phù hợp trong từng trường hợp.
-
-### Đóng góp về hệ thống
-
-- Xây dựng quy trình hoàn chỉnh từ thu thập dữ liệu, làm sạch, tạo đặc trưng, huấn luyện, đánh giá đến lưu kết quả phục vụ gợi ý.
-- Xây dựng dịch vụ gợi ý để sinh danh sách phim mà không cần huấn luyện lại.
-- Xây dựng giao diện demo cho phép tìm kiếm phim, xem chi tiết, xem phim tương tự, thêm phim vào gu phiên hiện tại và nhận gợi ý theo tài khoản hoặc theo phiên.
-- Tích hợp chatbot truy xuất siêu dữ liệu phim và trả lời tư vấn bằng tiếng Việt.
+**Về mặt triển khai hệ thống:** Đề tài hoàn thiện một hệ thống demo đầu-cuối từ pipeline dữ liệu offline đến phục vụ online. Hệ thống bao gồm backend API tốc độ cao bằng FastAPI, giao diện tương tác Streamlit mô phỏng ứng dụng xem phim thực tế, dashboard trực quan hóa dữ liệu EDA và không gian nhúng phim, cùng chatbot tư vấn phim tiếng Việt ứng dụng kỹ thuật RAG.
 
 ## 1.7. Cấu trúc báo cáo
 
-Báo cáo được tổ chức như sau:
-
-- Chương 1 giới thiệu bối cảnh, bài toán, mục tiêu, phạm vi và đóng góp của đề tài.
-- Chương 2 trình bày cơ sở lý thuyết về hệ thống gợi ý, lọc cộng tác, gợi ý dựa trên nội dung, học biểu diễn trên đồ thị và phương pháp kết hợp.
-- Chương 3 mô tả dữ liệu sử dụng, quy trình thu thập, làm sạch, làm giàu siêu dữ liệu và phân tích khám phá dữ liệu.
-- Chương 4 trình bày phương pháp đề xuất, kiến trúc hệ thống, quy trình xử lý dữ liệu và chi tiết từng nhóm mô hình.
-- Chương 5 trình bày thực nghiệm, thiết lập đánh giá, kết quả trên MovieLens và Letterboxd, phân tích định lượng và định tính.
-- Chương 6 mô tả quá trình xây dựng hệ thống demo, gồm dịch vụ gợi ý, giao diện người dùng, dashboard phân tích dữ liệu và chatbot tư vấn phim.
-- Chương 7 trình bày các khó khăn, hạn chế và hướng xử lý trong quá trình thực hiện.
-- Chương 8 tổng kết kết quả đạt được và đề xuất hướng phát triển tiếp theo.
+Báo cáo đồ án môn học được tổ chức thành tám chương nội dung chính. Chương 1 giới thiệu bối cảnh, bài toán, mục tiêu, phạm vi nghiên cứu và đóng góp khoa học của đề tài. Chương 2 tập trung vào cơ sở lý thuyết, làm rõ các phương pháp lọc cộng tác, gợi ý dựa trên nội dung, học biểu diễn đồ thị GNN và các mô hình học xếp hạng lai ghép. Chương 3 mô tả chi tiết nguồn dữ liệu, quy trình làm sạch, làm giàu catalog và phân tích khám phá dữ liệu (EDA). Chương 4 trình bày phương pháp đề xuất, chi tiết kiến trúc hệ thống và quy trình triển khai thuật toán. Chương 5 tổng hợp kết quả đánh giá thực nghiệm định lượng và phân tích định tính trên hai tập dữ liệu. Chương 6 mô tả chi tiết quá trình xây dựng và vận hành hệ thống demo tương tác, backend API và chatbot tư vấn. Chương 7 phân tích các khó khăn, hạn chế kỹ thuật và đề xuất các biện pháp giảm thiểu đã áp dụng. Cuối cùng, Chương 8 tổng kết các kết quả đạt được và định hướng các nghiên cứu phát triển tiếp theo của đề tài.
 
 # CHƯƠNG 2. CƠ SỞ LÝ THUYẾT
 
