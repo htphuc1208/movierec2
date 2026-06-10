@@ -53,10 +53,39 @@ run_step() {
   log "DONE $name"
 }
 
+GPU_MONITOR_PID=""
+
+stop_gpu_monitor() {
+  if [[ -n "$GPU_MONITOR_PID" ]]; then
+    kill "$GPU_MONITOR_PID" >/dev/null 2>&1 || true
+    wait "$GPU_MONITOR_PID" >/dev/null 2>&1 || true
+    GPU_MONITOR_PID=""
+  fi
+}
+
+start_gpu_monitor() {
+  if [[ "${MONITOR_GPU:-1}" != "1" ]]; then
+    return
+  fi
+  if ! command -v nvidia-smi >/dev/null 2>&1; then
+    log "GPU monitor skipped: nvidia-smi not found"
+    return
+  fi
+  local monitor_file="$LOG_DIR/nvidia_smi.csv"
+  log "GPU monitor: $monitor_file"
+  nvidia-smi \
+    --query-gpu=timestamp,name,index,utilization.gpu,utilization.memory,memory.used,memory.total,power.draw \
+    --format=csv \
+    -l "${GPU_MONITOR_INTERVAL:-10}" >"$monitor_file" &
+  GPU_MONITOR_PID="$!"
+}
+
 log "Project root: $ROOT_DIR"
 log "Pipeline log: $PIPELINE_LOG"
 log "PYTHONPATH: $PYTHONPATH"
 log "PYTHON_BIN: $PYTHON_BIN"
+trap stop_gpu_monitor EXIT
+start_gpu_monitor
 
 if [[ "${INSTALL_DEPS:-1}" == "1" ]]; then
   run_step upgrade_packaging "$PYTHON_BIN" -m pip install -q --upgrade pip setuptools wheel
@@ -101,6 +130,7 @@ DIM="${DIM:-128}"
 MAX_EASE_ITEMS="${MAX_EASE_ITEMS:-5000}"
 MAX_RANKER_SAMPLES="${MAX_RANKER_SAMPLES:-500000}"
 MIN_RATING="${MIN_RATING:-4.0}"
+EMBEDDING_CACHE_DIR="${EMBEDDING_CACHE_DIR:-.cache/recommender/content_embeddings}"
 
 RUN_MOVIELENS="${RUN_MOVIELENS:-0}"
 RUN_LETTERBOXD="${RUN_LETTERBOXD:-1}"
@@ -119,8 +149,11 @@ log "BATCH_SIZE: $BATCH_SIZE"
 log "DIM: $DIM"
 log "MAX_EASE_ITEMS: $MAX_EASE_ITEMS"
 log "MAX_RANKER_SAMPLES: $MAX_RANKER_SAMPLES"
+log "EMBEDDING_CACHE_DIR: $EMBEDDING_CACHE_DIR"
 log "RUN_MOVIELENS: $RUN_MOVIELENS"
 log "RUN_LETTERBOXD: $RUN_LETTERBOXD"
+log "GPU-backed steps when cache misses: SBERT encoding, LightGCN, learned Two-Tower, implicit ALS only if its CUDA backend is available"
+log "CPU-bound steps: KNN/SVD/EASE/popularity/content scoring/LightFM/LightGBM ranker/evaluation/feature generation"
 
 if [[ "$DEVICE" == cuda* || "$REQUIRE_CUDA" == "1" ]]; then
   run_step check_cuda "$PYTHON_BIN" -u -c '
@@ -171,6 +204,7 @@ if [[ "$RUN_MOVIELENS" == "1" ]]; then
     --device "$DEVICE" \
     --max-ease-items "$MAX_EASE_ITEMS" \
     --max-ranker-samples "$MAX_RANKER_SAMPLES" \
+    --embedding-cache-dir "$EMBEDDING_CACHE_DIR" \
     --min-rating "$MIN_RATING"
 fi
 
@@ -190,6 +224,7 @@ if [[ "$RUN_LETTERBOXD" == "1" ]]; then
     --device "$DEVICE" \
     --max-ease-items "$MAX_EASE_ITEMS" \
     --max-ranker-samples "$MAX_RANKER_SAMPLES" \
+    --embedding-cache-dir "$EMBEDDING_CACHE_DIR" \
     --min-rating "$MIN_RATING"
 fi
 

@@ -59,6 +59,8 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    _validate_device(args.device)
+    _print_runtime_plan(args)
     config = ComparisonConfig(
         k=args.k,
         batch_size=args.batch_size,
@@ -101,7 +103,7 @@ def main() -> None:
             device=args.device,
             seed=args.seed,
         ),
-        ImplicitALSRecommender(factors=args.lightgcn_dim, iterations=max(10, args.lightgcn_epochs // 5)),
+        ImplicitALSRecommender(factors=args.lightgcn_dim, iterations=max(10, args.lightgcn_epochs // 5), device=args.device),
         LightFMWARPRecommender(no_components=args.lightgcn_dim, epochs=max(10, args.lightgcn_epochs // 5), random_state=args.seed),
     ]
 
@@ -172,6 +174,47 @@ def main() -> None:
         encoding="utf-8",
     )
     print(json.dumps({"ranker_metrics": ranker_metrics, "ranker_metadata": ranker.metadata}, ensure_ascii=False, indent=2))
+
+
+def _validate_device(device: str) -> None:
+    if not device.startswith("cuda"):
+        return
+    try:
+        import torch
+    except ImportError as exc:
+        raise RuntimeError("device=cuda was requested, but torch is not installed") from exc
+    if not torch.cuda.is_available():
+        raise RuntimeError("device=cuda was requested, but torch.cuda.is_available() is False")
+
+
+def _print_runtime_plan(args: argparse.Namespace) -> None:
+    print(
+        json.dumps(
+            {
+                "device": args.device,
+                "gpu_backed_when_available": [
+                    "sbert_embedding_encode",
+                    "lightgcn_only",
+                    "learned_two_tower",
+                    "implicit_als_if_implicit_cuda_backend_is_available",
+                ],
+                "cpu_bound_components": [
+                    "popularity_only",
+                    "item_knn_cosine",
+                    "user_knn_cosine",
+                    "svd_ranking",
+                    "ease",
+                    "content_average_scoring",
+                    "lightfm_warp",
+                    "lightgbm_or_sgd_ranker",
+                    "metric_evaluation_and_feature_generation",
+                ],
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        flush=True,
+    )
 
 
 def _evaluate_model(dataset, model, config: ComparisonConfig) -> dict[str, float]:

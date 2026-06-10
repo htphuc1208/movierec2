@@ -171,7 +171,7 @@ def run_comparison_for_dataset(dataset: ExperimentDataset, config: ComparisonCon
         base_models.extend(
             [
                 SLIMElasticNetRecommender(max_items=config.max_slim_items),
-                ImplicitALSRecommender(factors=config.mf_dim, iterations=max(1, config.epochs)),
+                ImplicitALSRecommender(factors=config.mf_dim, iterations=max(1, config.epochs), device=config.device),
                 LightFMWARPRecommender(no_components=config.mf_dim, epochs=max(1, config.epochs), random_state=config.seed),
                 NeuMFRecommender(embedding_dim=max(8, config.mf_dim // 2), epochs=config.epochs, batch_size=config.batch_size, device=config.device, seed=config.seed),
             ]
@@ -375,7 +375,7 @@ def encode_item_texts_cached(
     config: ComparisonConfig,
 ) -> np.ndarray:
     if not config.use_content_cache or config.embedding_cache_dir is None:
-        return encode_item_texts(catalog, backend=config.content_backend, model_name=config.sbert_model)
+        return encode_item_texts(catalog, backend=config.content_backend, model_name=config.sbert_model, device=config.device)
     cache_dir = Path(config.embedding_cache_dir)
     cache_dir.mkdir(parents=True, exist_ok=True)
     docs = build_item_text(catalog)
@@ -387,8 +387,13 @@ def encode_item_texts_cached(
     model_key = config.sbert_model.split("/")[-1].replace(":", "_")
     cache_path = cache_dir / f"{dataset_name}_{variant}_{config.content_backend}_{model_key}_{key}.npy"
     if cache_path.exists():
+        print(f"Embedding cache hit: {cache_path}", flush=True)
         return np.load(cache_path).astype(np.float32)
-    embeddings = encode_item_texts(catalog, backend=config.content_backend, model_name=config.sbert_model)
+    print(
+        f"Embedding cache miss: dataset={dataset_name} variant={variant} backend={config.content_backend} device={config.device}",
+        flush=True,
+    )
+    embeddings = encode_item_texts(catalog, backend=config.content_backend, model_name=config.sbert_model, device=config.device)
     np.save(cache_path, embeddings.astype(np.float32))
     return embeddings.astype(np.float32)
 

@@ -98,7 +98,7 @@ def train_lightgcn_if_requested(args: argparse.Namespace, prepared, train_user_i
     return (
         user_embeddings.detach().cpu().numpy().astype(np.float32),
         item_embeddings.detach().cpu().numpy().astype(np.float32),
-        {"enabled": True, "losses": losses},
+        {"enabled": True, "device": args.device, "losses": losses},
     )
 
 
@@ -240,6 +240,7 @@ def _weight_grid(component_count: int, step: float) -> list[np.ndarray]:
 
 def main() -> None:
     args = parse_args()
+    _validate_device(args.device)
     data = read_movielens(args.raw_dir)
     prepared = prepare_interactions(data.ratings, min_rating=args.min_rating)
     catalog = ordered_catalog(data.movies, args.enriched_catalog, prepared.item_mapping)
@@ -249,6 +250,7 @@ def main() -> None:
         catalog,
         backend=args.content_backend,
         model_name=args.sbert_model,
+        device=args.device if args.content_backend in {"sbert", "auto"} else None,
     )
     user_profiles = build_user_profiles(prepared.train, content_embeddings, prepared.num_users)
     popularity = item_popularity(prepared.train, prepared.num_items)
@@ -346,6 +348,17 @@ def main() -> None:
         json.dump({"metrics": metrics, "hybrid_config": hybrid_config}, fh, ensure_ascii=False, indent=2)
     print(f"Saved artifacts to {args.artifacts_dir}")
     print(json.dumps({"metrics": metrics, "hybrid_config": hybrid_config}, ensure_ascii=False, indent=2))
+
+
+def _validate_device(device: str) -> None:
+    if not device.startswith("cuda"):
+        return
+    try:
+        import torch
+    except ImportError as exc:
+        raise RuntimeError("device=cuda was requested, but torch is not installed") from exc
+    if not torch.cuda.is_available():
+        raise RuntimeError("device=cuda was requested, but torch.cuda.is_available() is False")
 
 
 if __name__ == "__main__":

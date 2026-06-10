@@ -46,6 +46,7 @@ def encode_item_texts(
     model_name: str = "sentence-transformers/all-mpnet-base-v2",
     fallback_dim: int = 256,
     batch_size: int = 64,
+    device: str | None = None,
 ) -> np.ndarray:
     """Encode item metadata into L2-normalized dense vectors."""
     documents = build_item_text(catalog)
@@ -59,10 +60,13 @@ def encode_item_texts(
 
     if backend == "sbert":
         try:
+            import torch
             from sentence_transformers import SentenceTransformer
         except ImportError as exc:
             raise ImportError("SBERT backend requires sentence-transformers. Install requirements.txt first.") from exc
-        model = SentenceTransformer(model_name)
+        if device and device.startswith("cuda") and not torch.cuda.is_available():
+            raise RuntimeError(f"SBERT requested device={device}, but torch.cuda.is_available() is False")
+        model = SentenceTransformer(model_name, device=device)
         embeddings = model.encode(
             documents,
             batch_size=batch_size,
