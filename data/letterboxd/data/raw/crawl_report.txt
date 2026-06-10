@@ -1,0 +1,33 @@
+Crawl report
+Generated at: 2026-06-08T09:50:34+00:00
+Source: merged old raw + data/letterboxd/raw.rar
+
+Raw dataset:
+- Users: 10508
+- Users with interactions: 10501
+- Movies: 320533
+- Interactions: 836498
+- Non-null ratings: 650113
+- Avg interactions/user: 79.66
+- Avg interactions/movie: 2.61
+- Interaction types: {'favorite': 36715, 'watched': 158462, 'liked': 10336, 'rating': 613398, 'diary': 10007, 'review': 7580}
+- Users with <10 interactions: 458
+- Movies with <5 interactions: 312557
+
+CF-ready dataset after k-core filtering:
+- K-core: min_user_interactions=10, min_movie_interactions=5
+- Users: 9197
+- Movies: 7848
+- Interactions: 503761
+- Non-null ratings: 366892
+- Avg interactions/user: 54.77
+- Avg interactions/movie: 64.19
+
+Files:
+- data/letterboxd/data/raw/users.csv
+- data/letterboxd/data/raw/movies_seed.csv
+- data/letterboxd/data/raw/interactions.csv
+- data/letterboxd/data/raw/ratings.csv
+- data/letterboxd/data/raw/interactions_cf.csv
+- data/letterboxd/data/raw/ratings_cf.csv
+- data/letterboxd/data/raw/movies_cf.csv
