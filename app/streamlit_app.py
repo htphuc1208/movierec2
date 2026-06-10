@@ -6,12 +6,13 @@ import html
 import os
 import re
 from typing import Any
+from datetime import datetime
 
 import pandas as pd
 import requests
 import streamlit as st
+import streamlit.components.v1 as components
 
-import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
@@ -153,7 +154,7 @@ def render_navbar(users: list[int]) -> None:
     col_brand, col_search, col_user, col_history = st.columns([1.1, 3.5, 1.4, 1.1])
     
     with col_brand:
-        if st.button("movierec", use_container_width=True):
+        if st.button("📽️movierec", use_container_width=True):
             navigate("home")
             
     with col_search:
@@ -168,8 +169,18 @@ def render_navbar(users: list[int]) -> None:
     with col_user:
         options = ["Guest"] + [str(user) for user in users[:1000]]
         current = "Guest" if st.session_state.current_user is None else str(st.session_state.current_user)
+        
         selected = st.selectbox("User", options, index=options.index(current) if current in options else 0, label_visibility="collapsed")
-        st.session_state.current_user = None if selected == "Guest" else int(selected)
+        
+        new_user = None if selected == "Guest" else int(selected)
+        
+        if new_user != st.session_state.current_user:
+            st.session_state.current_user = new_user
+            
+            st.session_state.chat_messages = []
+            st.session_state.bot_is_typing = False
+            
+            st.rerun()
         
     with col_history:
         st.button("Lịch sử", use_container_width=True, disabled=st.session_state.current_user is None, on_click=navigate, args=("history",))
@@ -179,6 +190,7 @@ def render_global_styles() -> None:
     st.markdown(
         """
         <style>
+        /* Row phim */
         div[data-testid="stHorizontalBlock"]:has(.movie-row-marker) {
             display: flex !important;
             flex-wrap: nowrap !important;
@@ -196,35 +208,30 @@ def render_global_styles() -> None:
         div[data-testid="stHorizontalBlock"]:has(.movie-row-marker)::-webkit-scrollbar-thumb { background: #f5c518; border-radius: 10px; }
         div[data-testid="stHorizontalBlock"]:has(.movie-row-marker)::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.08); border-radius: 10px; }
 
-        
-        button[data-baseweb="tab"] {
-            font-size: 1.25rem !important; 
-            font-weight: 600 !important;
-            padding: 1rem 1.5rem !important;
-            color: #888 !important; /* Màu xám nhạt cho Tab chưa chọn */
+        /* Tabs Navbar */
+        div[data-baseweb="tab-list"] {
+            display: flex !important;
+            justify-content: center !important;
+            gap: 40px !important;
+            border-bottom: 2px solid #222 !important; 
+            margin-bottom: 2rem !important;
+            padding-bottom: 0 !important;
         }
-        
+        button[data-baseweb="tab"] {
+            font-size: 1.1rem !important; 
+            font-weight: 700 !important;
+            padding: 1rem 0 !important;
+            color: #888 !important; 
+        }
         button[data-baseweb="tab"][aria-selected="true"] {
             color: #F5C518 !important; 
-            font-size: 1.3rem !important;
         }
-        
-        /* Kéo giãn khoảng cách giữa các Tab và thêm đường kẻ mờ ở dưới đáy */
-        div[data-baseweb="tab-list"] {
-            gap: 15px;
-            border-bottom: 2px solid #222 !important; 
-            margin-bottom: 1.5rem;
-        }
-        
         div[data-baseweb="tab-highlight"] {
             background-color: #F5C518 !important;
-            height: 4px !important;
+            height: 3px !important;
             border-radius: 4px 4px 0 0 !important;
         }
-
-        .block-container {
-            padding-top: 1rem !important;
-        }
+        .block-container { padding-top: 2rem !important; }
         
         div[data-testid="stTabs"] > div:first-child {
             position: sticky !important;
@@ -234,74 +241,88 @@ def render_global_styles() -> None:
             padding-bottom: 5px !important;
             box-shadow: 0px 10px 10px -10px rgba(0,0,0,0.5);
         }
+
+        /* Chatbot */
+        .chatbot-marker { display: none !important; }
+        div.element-container:has(.chatbot-marker) + div {
+            position: fixed !important;
+            bottom: 25px !important;
+            right: 30px !important;
+            z-index: 999999 !important;
+            width: auto !important;
+        }
+        div.element-container:has(.chatbot-marker) + div button {
+            background-color: #F5C518 !important;
+            color: #000 !important;
+            font-weight: bold !important;
+            border-radius: 50px !important;
+            padding: 10px 22px !important;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.5) !important;
+            border: none !important;
+            transition: transform 0.2s;
+        }
+        div.element-container:has(.chatbot-marker) + div button:hover { transform: scale(1.05); }
+        div[data-testid="stPopoverBody"] {
+            background-color: #141414 !important;
+            border: 1px solid #333 !important;
+            border-radius: 12px !important;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.8) !important;
+            width: 360px !important;
+            padding: 15px !important;
+        }
+
+        /* Hero Carousel */
+        div[data-testid="stHorizontalBlock"]:has(.hero-carousel-marker) {
+            display: flex !important;
+            flex-wrap: nowrap !important;
+            overflow-x: auto !important;
+            overflow-y: hidden !important; 
+            scroll-snap-type: x mandatory;
+            padding-bottom: 30px !important;
+            scroll-behavior: smooth;
+        }
+        div[data-testid="stHorizontalBlock"]:has(.hero-carousel-marker) > div {
+            min-width: 100% !important;
+            flex: 0 0 100% !important;
+            scroll-snap-align: start;
+        }
+        div.stButton > button { position: relative !important; z-index: 10 !important; }
+        @keyframes blink { 0% {opacity: 0.3;} 50% {opacity: 1;} 100% {opacity: 0.3;} }
         </style>
         """,
         unsafe_allow_html=True,
     )
 
-
 def render_hero_banner() -> None:
-    # 1. Gọi API lấy 5 phim Trending
     data = api_get_cached("/movies/trending", top_k=5)
     movies = movie_list(data)
     if not movies:
         return
         
-    st.markdown("""
-    <style>
-    div[data-testid="stHorizontalBlock"]:has(.hero-carousel-marker) {
-        display: flex !important;
-        flex-wrap: nowrap !important;
-        overflow-x: auto !important;
-        overflow-y: hidden !important; /* [MỚI] Triệt tiêu thanh trượt dọc */
-        scroll-snap-type: x mandatory;
-        padding-bottom: 30px !important;
-        scroll-behavior: smooth;
-    }
-    div[data-testid="stHorizontalBlock"]:has(.hero-carousel-marker) > div {
-        min-width: 100% !important;
-        flex: 0 0 100% !important;
-        scroll-snap-align: start;
-        background-color: transparent !important;
-    }
-    div[data-testid="stHorizontalBlock"]:has(.hero-carousel-marker)::-webkit-scrollbar { height: 10px; }
-    div[data-testid="stHorizontalBlock"]:has(.hero-carousel-marker)::-webkit-scrollbar-thumb { background: #E50914; border-radius: 10px; }
-    div[data-testid="stHorizontalBlock"]:has(.hero-carousel-marker)::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.1); border-radius: 10px; }
-
-    /* Ép nút bấm nổi lên trên ảnh nền */
-    div.stButton > button {
-        position: relative !important;
-        z-index: 10 !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-    
-    # Dùng cột Streamlit làm khung trượt
     cols = st.columns(len(movies))
     
     for idx, col in enumerate(cols):
         with col:
             st.markdown('<span class="hero-carousel-marker" style="display:none;"></span>', unsafe_allow_html=True)
             
-            # Sử dụng các hàm parse chuẩn của phiên bản mới
             m = movies[idx]
             movie_id = parse_movie_id(m)
             
             title = safe_text(clean_title(m.get("title", "Untitled")))
-            score = float(m.get("vote_average") or m.get("score") or 0.0)
             genres = safe_text(str(m.get("tmdb_genres") or m.get("genres") or "Hấp dẫn").replace("|", ", "))
             
+            tmdb_score = float(m.get("vote_average") or 0.0)
+                        
             poster = m.get("poster_url") or ""
             if not poster or str(poster).lower() == "nan":
                 poster = "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?ixlib=rb-4.0.3&auto=format&fit=crop&w=1600&q=80"
                 
-            # Vẽ Background giao diện
             html_bg = f"""
             <div style="width: 100%; min-height: 480px; border-radius: 12px; border: 1px solid #222; box-shadow: 0 8px 20px rgba(0,0,0,0.8); display: flex; flex-direction: column; justify-content: flex-end; padding: 45px; padding-bottom: 100px; box-sizing: border-box; background: linear-gradient(to right, rgba(15,15,15,1) 0%, rgba(15,15,15,0.7) 45%, rgba(15,15,15,0) 100%), linear-gradient(to top, rgba(15,15,15,1) 0%, rgba(15,15,15,0.5) 30%, rgba(15,15,15,0) 100%), url('{poster}') no-repeat center top / cover; background-color: #0f0f0f; margin-bottom: -80px; position: relative; z-index: 0;">
             <div style="max-width: 65%;">
             <h1 style="font-size: 3.6rem; margin: 0 0 10px 0; color: white; text-shadow: 2px 2px 5px rgba(0,0,0,1); line-height: 1.15; font-weight: 800; letter-spacing: -1px;">{title}</h1>
             <div style="font-size: 1.15rem; color: #ddd; margin-bottom: 0px; display: flex; align-items: center; gap: 10px; text-shadow: 1px 1px 3px rgba(0,0,0,1);">
-            <span style="color: #F5C518; font-weight: bold;">⭐{score:.1f}</span>
+            <span style="color: #F5C518; font-weight: bold;">⭐ {tmdb_score:.1f}/10</span>
             <span style="color: #777;">|</span>
             <span style="font-weight: 500;">{genres}</span>
             </div>
@@ -310,7 +331,6 @@ def render_hero_banner() -> None:
             """
             st.markdown(html_bg, unsafe_allow_html=True)
             
-            # Nút bấm tương tác
             btn_space, btn_xem, padding_right = st.columns([0.06, 0.2, 0.74])
             
             with btn_xem:
@@ -319,6 +339,41 @@ def render_hero_banner() -> None:
                 else:
                     st.button("Xem chi tiết", type="primary", key=f"hero_err_{idx}", disabled=True, width="stretch")
 
+    components.html(
+        """
+        <script>
+        const parentWin = window.parent;
+        const parentDoc = parentWin.document;
+
+        function startAutoScroll() {
+            const markers = parentDoc.querySelectorAll('.hero-carousel-marker');
+            if (markers.length === 0) return;
+            
+            const carousel = markers[0].closest('div[data-testid="stHorizontalBlock"]');
+            if (!carousel) return;
+
+            if (parentWin.heroInterval) {
+                clearInterval(parentWin.heroInterval);
+            }
+
+            parentWin.heroInterval = setInterval(function() {
+                const maxScroll = carousel.scrollWidth - carousel.clientWidth;
+                
+                if (carousel.scrollLeft >= maxScroll - 10) {
+                    carousel.scrollTo({left: 0, behavior: 'smooth'});
+                } else {
+                    carousel.scrollBy({left: carousel.clientWidth, behavior: 'smooth'});
+                }
+            }, 5000); 
+        }
+        
+        setTimeout(startAutoScroll, 500);
+        </script>
+        """,
+        height=0,
+        width=0,
+    )
+
 
 def render_movie_card(movie: dict[str, Any], key: str, is_row: bool = False) -> None:
     movie_id = parse_movie_id(movie)
@@ -326,17 +381,15 @@ def render_movie_card(movie: dict[str, Any], key: str, is_row: bool = False) -> 
     poster_url = movie.get("poster_url") or ""
     title = clean_title(movie.get("title", "Untitled"))
 
-    score = float(movie.get("vote_average") or movie.get("score") or 0.0)
     vote_count = int(movie.get("vote_count") or 0)
     match_score = movie.get("match_score")
     genres = str(movie.get("tmdb_genres") or movie.get("genres") or "").replace("|", ", ")
     
     explanation_tags = movie.get("explanation_tags") or []
 
-    if score > 5.0:
-        score = score / 2.0
+    tmdb_score = float(movie.get("vote_average") or 0.0)
         
-    rating_str = f"⭐{score:.1f}" if score > 0 else "Chưa có điểm"
+    rating_str = f"⭐ {tmdb_score:.1f}/10" if tmdb_score > 0 else "Chưa có điểm"
 
     match_html = ""
     if match_score is not None and 0.0 < match_score <= 1.0:
@@ -523,7 +576,6 @@ def render_home_page() -> None:
             )
         
         recs = recommend(user_id, model_name=str(model_label).lower(), top_k=15, session_context=session_context)
-        
         render_movie_row("", recs, "recommended")
         
     elif session_context and session_weight > 0.0:
@@ -541,7 +593,17 @@ def render_home_page() -> None:
         ("Hành động", "/movies/genre/Action"),
         ("Hài hước", "/movies/genre/Comedy"),
     ]:
-        render_movie_row(title, movie_list(api_get_cached(path, top_k=15)), path)
+        if title == "Phim mới":
+            raw_movies = movie_list(api_get_cached(path, top_k=50))
+            today_str = datetime.today().strftime("%Y-%m-%d")
+            movies = [
+                m for m in raw_movies 
+                if not m.get("release_date") or str(m.get("release_date")) <= today_str
+            ][:15]
+        else:
+            movies = movie_list(api_get_cached(path, top_k=15))
+            
+        render_movie_row(title, movies, path)
 
 
 def render_search_page() -> None:
@@ -593,8 +655,6 @@ def render_history_page() -> None:
             }
         )
 
-    
-        
     with st.expander("Xem chi tiết dữ liệu thô"):
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
         
@@ -623,7 +683,6 @@ def render_detail_page(movie_id: int | None) -> None:
     title = clean_title(movie.get("title", ""))
     poster_url = movie.get("poster_url") or ""
     genres = str(movie.get("tmdb_genres") or movie.get("genres") or "").replace("|", ", ")
-    score = float(movie.get("vote_average") or movie.get("score") or 0.0)
     vote_count = int(movie.get("vote_count") or 0)
     overview = movie.get("overview") or "Chưa có thông tin tóm tắt cho bộ phim này."
     director = movie.get("director") or "Đang cập nhật"
@@ -631,8 +690,8 @@ def render_detail_page(movie_id: int | None) -> None:
     
     explanation_tags = st.session_state.get("current_tags", [])
 
-    if score > 5.0: score = score / 2.0
-
+    tmdb_score = float(movie.get("vote_average") or 0.0)
+    
     st.markdown("<br>", unsafe_allow_html=True)
     c1, c2 = st.columns([1, 2.5], gap="large")
     
@@ -642,7 +701,25 @@ def render_detail_page(movie_id: int | None) -> None:
             
     with c2:
         st.markdown(f"<h1 style='font-size: 3rem; margin-bottom: 0;'>{title}</h1>", unsafe_allow_html=True)
-        st.markdown(f"<p style='color: #F5C518; font-size: 1.3rem; font-weight: bold;'>⭐{score:.1f} <span style='color: #aaa; font-weight: normal; font-size: 1rem;'>({vote_count} đánh giá)</span></p>", unsafe_allow_html=True)
+        
+        st.markdown(
+            f"""
+            <div style="display: flex; gap: 20px; align-items: center; margin-top: 10px; margin-bottom: 15px; background-color: rgba(255,255,255,0.05); padding: 10px 15px; border-radius: 8px; width: fit-content;">
+                <div style="display: flex; flex-direction: column; align-items: center;">
+                    <div style="font-size: 0.85rem; color: #aaa; margin-bottom: 2px;">Rating</div>
+                    <div style="font-size: 1.2rem; font-weight: bold; color: #F5C518;">
+                        TMDB: {tmdb_score:.1f} <span style="font-size: 0.9rem; color: #777; font-weight: normal;">/10</span>
+                    </div>
+                </div>
+                <div style="width: 1px; height: 35px; background-color: rgba(255,255,255,0.2);"></div>
+                <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%;">
+                    <div style="font-size: 0.9rem; color: #888;">{vote_count:,} votes</div>
+                </div>
+            </div>
+            """, 
+            unsafe_allow_html=True
+        )
+        
         in_session = int(movie_id) in get_session_context()
         st.button(
             "Bỏ khỏi gu phiên hiện tại" if in_session else "Thêm vào gu phiên hiện tại",
@@ -650,7 +727,7 @@ def render_detail_page(movie_id: int | None) -> None:
             on_click=toggle_session_movie,
             args=(movie,),
         )
-        st.markdown(f"<p style='font-size: 1.1rem; color: #ddd;'><b>Đạo diễn:</b> {director}</p>", unsafe_allow_html=True)
+        st.markdown(f"<p style='font-size: 1.1rem; color: #ddd; margin-top: 10px;'><b>Đạo diễn:</b> {director}</p>", unsafe_allow_html=True)
         st.markdown(f"<p style='font-size: 1.1rem; color: #ddd;'><b>Diễn viên:</b> {cast}</p>", unsafe_allow_html=True)
         st.markdown(f"<p style='font-size: 1.1rem; color: #ddd; margin-bottom: 5px;'><b>Thể loại:</b> {genres}</p>", unsafe_allow_html=True)
         
@@ -663,9 +740,6 @@ def render_detail_page(movie_id: int | None) -> None:
         
         st.markdown(f"<p style='color: #aaa; line-height: 1.6; margin-top: 15px;'>{overview}</p>", unsafe_allow_html=True)
         
-        # ===============================
-        # KHOANG ĐÁNH GIÁ PHIM (RATING)
-        # ===============================
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("<h4 style='margin-bottom: 10px;'>Đánh giá của bạn</h4>", unsafe_allow_html=True)
         
@@ -677,7 +751,8 @@ def render_detail_page(movie_id: int | None) -> None:
             existing_rating_data = api_get(f"/rate/{user_id}/{movie_id}")
             existing_rating = existing_rating_data.get("rating") if existing_rating_data else None
             
-            rating_options = [5.0, 4.5, 4.0, 3.5, 3.0, 2.5, 2.0, 1.5, 1.0, 0.5]
+            rating_options = [10.0, 9.5, 9.0, 8.5, 8.0, 7.5, 7.0, 6.5, 6.0, 5.5,
+                              5.0, 4.5, 4.0, 3.5, 3.0, 2.5, 2.0, 1.5, 1.0, 0.5]
             
             with st.form(key=f"form_rating_{movie_id}", border=False):
                 col_rate, col_btn, _ = st.columns([1.2, 1.2, 4], vertical_alignment="center")
@@ -719,7 +794,6 @@ def render_detail_page(movie_id: int | None) -> None:
                         st.rerun()
                     else:
                         st.toast("Error: Có lỗi xảy ra, chưa thể gửi đánh giá.")
-        # ====================================
 
     st.markdown("<hr style='border-color: #333; margin: 3rem 0 1rem 0;'>", unsafe_allow_html=True)
 
@@ -729,8 +803,6 @@ def render_detail_page(movie_id: int | None) -> None:
 
 def render_metrics_page() -> None:
     st.title("Đánh giá mô hình")
-    health = api_get("/health") or {}
-    st.json(health)
     metrics = ((api_get("/model-info") or {}).get("model_info") or {}).get("metrics", {})
     rows = []
     for group, values in metrics.items():
@@ -741,44 +813,61 @@ def render_metrics_page() -> None:
     if rows:
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
+def handle_chat_submit():
+    user_message = st.session_state.chat_input_widget
+    if user_message.strip():
+        st.session_state.chat_messages.append({"role": "user", "content": user_message})
+        st.session_state.chat_input_widget = "" 
+        st.session_state.bot_is_typing = True
+        st.session_state.pending_message = user_message
 
-def render_chatbot_page() -> None:
-    st.title("Chatbot tư vấn phim")
-    st.caption("Chatbot truy xuất phim từ artifact hiện tại; nếu chưa cấu hình OpenAI key, API sẽ trả lời bằng chế độ local.")
 
+def render_floating_chatbot() -> None:
     st.session_state.setdefault("chat_messages", [])
-    for message in st.session_state.chat_messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
+    st.session_state.setdefault("bot_is_typing", False)
 
-    user_message = st.chat_input("Bạn muốn xem phim kiểu gì?")
-    if not user_message:
-        return
+    st.markdown('<div class="chatbot-marker"></div>', unsafe_allow_html=True)
+    
+    with st.popover("💬 Trợ lý AI"):
+        st.markdown("<div style='font-weight: bold; font-size: 1.1rem; color: #F5C518; margin-bottom: 12px; border-bottom: 1px solid #333; padding-bottom: 8px;'>🤖 AI Tư vấn Phim</div>", unsafe_allow_html=True)
+        
+        chat_html = "<div style='height: 280px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding-right: 5px; margin-bottom: 12px;'>"
+        if not st.session_state.chat_messages:
+            chat_html += "<div style='color: #777; font-size: 0.9rem; text-align: center; margin-top: 100px;'>Chào bác! Bác muốn tìm xem bộ phim kiểu như thế nào?</div>"
+        else:
+            for msg in st.session_state.chat_messages:
+                if msg["role"] == "user":
+                    chat_html += f"<div style='align-self: flex-end; background-color: #0084ff; color: white; padding: 6px 12px; border-radius: 14px; max-width: 80%; font-size: 0.9rem; word-break: break-word;'>{safe_text(msg['content'])}</div>"
+                else:
+                    chat_html += f"<div style='align-self: flex-start; background-color: #262626; color: #eee; padding: 6px 12px; border-radius: 14px; max-width: 80%; font-size: 0.9rem; word-break: break-word;'>{safe_text(msg['content'])}</div>"
+        
+        if st.session_state.bot_is_typing:
+            chat_html += "<div style='align-self: flex-start; background-color: transparent; color: #F5C518; padding: 0px 5px; font-size: 0.85rem; font-style: italic; animation: blink 1.5s infinite;'>AI đang suy nghĩ...</div>"
+            
+        chat_html += "</div>"
+        
+        st.markdown(chat_html, unsafe_allow_html=True)
+        
+        st.text_input(
+            "Tin nhắn",
+            key="chat_input_widget",
+            placeholder="Đợi AI trả lời nhé..." if st.session_state.bot_is_typing else "Hỏi AI phim gì đó...",
+            label_visibility="collapsed",
+            on_change=handle_chat_submit,
+            disabled=st.session_state.bot_is_typing
+        )
 
-    st.session_state.chat_messages.append({"role": "user", "content": user_message})
-    with st.chat_message("user"):
-        st.markdown(user_message)
-
-    with st.chat_message("assistant"):
-        with st.spinner("Đang tìm phim phù hợp..."):
-            data = api_post("/chat", {"message": user_message, "top_k": 6})
-        if not data:
-            st.error("Không gọi được chatbot API.")
-            return
-        answer = str(data.get("answer") or "")
-        st.markdown(answer)
-        st.session_state.chat_messages.append({"role": "assistant", "content": answer})
-        sources = data.get("sources") or []
-        if sources:
-            st.caption(f"Nguồn gợi ý ({data.get('retrieval_mode') or 'retrieval'}):")
-            columns = st.columns(min(3, len(sources)))
-            for idx, movie in enumerate(sources[:6]):
-                with columns[idx % len(columns)]:
-                    poster_url = movie.get("poster_url")
-                    if poster_url:
-                        st.image(poster_url, use_container_width=True)
-                    st.markdown(f"**{clean_title(movie.get('title', ''))}**")
-                    st.caption(f"Điểm liên quan: {float(movie.get('score') or 0.0):.3f}")
+        if st.session_state.bot_is_typing:
+            data = api_post("/chat", {"message": st.session_state.pending_message, "top_k": 3})
+            
+            if data:
+                answer = str(data.get("answer") or "")
+                st.session_state.chat_messages.append({"role": "assistant", "content": answer})
+            else:
+                st.session_state.chat_messages.append({"role": "assistant", "content": "Xin lỗi bác, tôi đang bị nghẽn mạng chút. Bác thử lại sau nhé!"})
+            
+            st.session_state.bot_is_typing = False
+            st.rerun()
 
 
 def main() -> None:
@@ -787,7 +876,7 @@ def main() -> None:
     render_global_styles()
     users = load_users()
     
-    page_tabs = st.tabs(["Trang chính", "Chatbot", "Đánh giá", "Trạng thái"])
+    page_tabs = st.tabs(["Trang chính", "Đánh giá", "Trạng thái"])
     
     with page_tabs[0]:
         render_navbar(users)
@@ -800,15 +889,14 @@ def main() -> None:
             render_detail_page(st.session_state.movie_id)
         else:
             render_home_page()
-            
-    with page_tabs[1]:
-        render_chatbot_page()
         
-    with page_tabs[2]:
+    with page_tabs[1]:
         render_metrics_page()
         
-    with page_tabs[3]:
+    with page_tabs[2]:
         st.json(api_get("/health") or {})
+
+    render_floating_chatbot()
 
 if __name__ == "__main__":
     main()
